@@ -195,14 +195,14 @@ add_library(freertos_kernel STATIC
     tasks.c
     timers.c
 
-    # If FREERTOS_HEAP is digit between 1 .. 5 - it is heap number, otherwise - it is path to custom heap source file
+    # If FREERTOS_HEAP is digit between 1 .. 5 - it is heap number, otMiddlewares/Third_Party/FreeRTOS/CMSIS/RTOS2/FreeRTOSMiddlewares/Third_Party/FreeRTOS/CMSIS/RTOS2/FreeRTOSherwise - it is path to custom heap source file
     $<IF:$<BOOL:$<FILTER:${FREERTOS_HEAP},EXCLUDE,^[1-5]$>>,${FREERTOS_HEAP},portable/MemMang/heap_${FREERTOS_HEAP}.c>
 )
 
 target_include_directories(freertos_kernel
     PUBLIC
         include
-        ${FREERTOS_CONFIG_FILE_DIRECTORY}
+        ${FREERTOS_CONFIG_FILE_DIRECTORY}    
 )
 
 target_link_libraries(freertos_kernel freertos_kernel_port)
