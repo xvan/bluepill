@@ -13,6 +13,7 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR})
 # Target definition
 set(CMAKE_SYSTEM_NAME  Generic)
 set(CMAKE_SYSTEM_PROCESSOR ARM)
+SET(CMAKE_CROSSCOMPILING 1)
 
 #---------------------------------------------------------------------------------------
 # Set toolchain paths
@@ -104,4 +105,3 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 
 set(CMAKE_TRY_COMPILE_TARGET_TYPE "STATIC_LIBRARY" CACHE INTERNAL "Make try static to avoid cross compiling errors")
-

@@ -6,4 +6,3 @@ set(TARGET ${ProjectId})
 add_executable( ${ProjectId} ${PROJECT_SRC})
 target_link_libraries(${ProjectId} $<TARGET_OBJECTS:STARTUP> $<TARGET_OBJECTS:DRIVERS>)
 target_include_directories(${ProjectId} PRIVATE Inc)
-

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(GPIO_InfiniteLedToggling C ASM)
+
 message(STATUS "Current Source Dir: ${CMAKE_CURRENT_SOURCE_DIR}")
 set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -23,8 +23,10 @@ set(LINKER_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/GCC/STM32F103C8TX_FLASH.ld")
 set(STARTUP_ASSEMBLY "${CMAKE_CURRENT_SOURCE_DIR}/GCC/startup_stm32f103c8tx.s")
 include(stm32fx)
 
+project(GPIO_InfiniteLedToggling C ASM)
+
 #add_definitions(-Dprintf=iprintf -DDEBUG)
-add_definitions(-DSTM32F103xB)
+add_definitions(-DSTM32F103xB -DUSE_FULL_LL_DRIVER)
 
 include_directories(
 ../../Drivers/BSP/Adafruit_Shield
@@ -58,7 +60,10 @@ include_directories(
 
 add_library(STARTUP OBJECT ${STARTUP_ASSEMBLY})
 
-add_library(DRIVERS OBJECT "../../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_utils.c" )
+add_library(DRIVERS OBJECT 
+	"../../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_utils.c" 
+	"../../Drivers/STM32F1xx_HAL_Driver/Src/stm32f1xx_ll_gpio.c"
+)
 
 add_subdirectory(Examples_LL)
 
