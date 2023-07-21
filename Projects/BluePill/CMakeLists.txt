@@ -66,6 +66,7 @@ add_library(DRIVERS OBJECT
 )
 
 add_subdirectory(Examples_LL)
+add_subdirectory(Examples_FreeRTOS)
 
 #FILE(GLOB_RECURSE PROJECT_SRC "Src/*.c")
 #set(TARGET ${PROJECT_NAME}.elf)
