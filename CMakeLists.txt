@@ -45,7 +45,7 @@ Drivers/BSP/Components/stmpe811
 #Drivers/BSP/STM3210E_EVAL
 #Drivers/BSP/STM32F1xx_Nucleo
 #Drivers/BSP/STM32VL-Discovery
-Drivers/CMSIS/Core_A/Include
+#Drivers/CMSIS/Core_A/Include
 Drivers/CMSIS/Core/Include
 Drivers/CMSIS/Device/ST/STM32F1xx/Include
 Drivers/CMSIS/DSP/Include
