@@ -202,7 +202,7 @@ void SysTick_Handler(void)
 /**
   * @brief This function handles USB low priority or CAN RX0 interrupts.
   */
-void USB_LP_CAN1_RX0_IRQHandler(void)
+void USB_LP_CAN_RX0_IRQHandler(void)
 {
   /* USER CODE BEGIN USB_LP_CAN1_RX0_IRQn 0 */
 
