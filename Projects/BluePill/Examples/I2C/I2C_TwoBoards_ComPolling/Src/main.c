@@ -38,7 +38,7 @@
 #define I2C_ADDRESS           0x30F
 
 /* I2C SPEEDCLOCK define to max value: 400 KHz on STM32F1xx*/
-#define I2C_SPEEDCLOCK   400000
+#define I2C_SPEEDCLOCK   100000
 #define I2C_DUTYCYCLE    I2C_DUTYCYCLE_2
 
 /* Private macro -------------------------------------------------------------*/
@@ -59,6 +59,8 @@ static void MX_GPIO_Init(void);
 static void BSP_LED_On(void);
 static void BSP_LED_Off(void);
 static void BSP_LED_Toggle(void);
+
+I2C_HandleTypeDef I2cHandle;
 
 /* Private functions ---------------------------------------------------------*/
 
@@ -86,15 +88,14 @@ int main(void)
 
   /* Configure LED2 */
   MX_GPIO_Init();
-  
-  I2C_HandleTypeDef I2cHandle;
+
 
   /*##-1- Configure the I2C peripheral ######################################*/
   I2cHandle.Instance             = I2Cx;
   I2cHandle.Init.ClockSpeed      = I2C_SPEEDCLOCK;
   I2cHandle.Init.DutyCycle       = I2C_DUTYCYCLE;
   I2cHandle.Init.OwnAddress1     = SI5351_BUS_BASE_ADDR;
-  I2cHandle.Init.AddressingMode  = I2C_ADDRESSINGMODE_10BIT;
+  I2cHandle.Init.AddressingMode  = I2C_ADDRESSINGMODE_7BIT;
   I2cHandle.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
   I2cHandle.Init.OwnAddress2     = 0xFF;
   I2cHandle.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
@@ -107,72 +108,6 @@ int main(void)
   }
 
   si5351_ping();
-  
-
-#ifdef MASTER_BOARD
-  
-  /* The board sends the message and expects to receive it back */
-  
-  /*##-2- Start the transmission process #####################################*/  
-  /* While the I2C in reception process, user can transmit data through 
-     "aTxBuffer" buffer */
-  /* Timeout is set to 10S */
-  while(HAL_I2C_Master_Transmit(&I2cHandle, (uint16_t)I2C_ADDRESS, (uint8_t*)aTxBuffer, TXBUFFERSIZE, 10000)!= HAL_OK)
-  {
-    /* Error_Handler() function is called when Timeout error occurs.
-       When Acknowledge failure occurs (Slave don't acknowledge its address)
-       Master restarts communication */
-    if (HAL_I2C_GetError(&I2cHandle) != HAL_I2C_ERROR_AF)
-    {
-      Error_Handler();
-    }
-  }
-  
-  /*##-3- Put I2C peripheral in reception process ############################*/ 
-  /* Timeout is set to 10S */ 
-  while(HAL_I2C_Master_Receive(&I2cHandle, (uint16_t)I2C_ADDRESS, (uint8_t *)aRxBuffer, RXBUFFERSIZE, 10000) != HAL_OK)
-  {
-    /* Error_Handler() function is called when Timeout error occurs.
-       When Acknowledge failure occurs (Slave don't acknowledge it's address)
-       Master restarts communication */
-    if (HAL_I2C_GetError(&I2cHandle) != HAL_I2C_ERROR_AF)
-    {
-      Error_Handler();
-    }
-  }
-  
-  /* Turn LED2 off: Transfer in reception process is correct */
-  BSP_LED_Off();
-  
-#else
-  
-  /* The board receives the message and sends it back */
-
-  /*##-2- Put I2C peripheral in reception process ############################*/ 
-  /* Timeout is set to 10S  */
-  if(HAL_I2C_Slave_Receive(&I2cHandle, (uint8_t *)aRxBuffer, RXBUFFERSIZE, 30000) != HAL_OK)
-  {
-    /* Transfer error in reception process */
-    Error_Handler();
-  }
-  
-  /* Turn LED2 on: Transfer in reception process is correct */
-  BSP_LED_On();
-  
-  /*##-3- Start the transmission process #####################################*/  
-  /* While the I2C in reception process, user can transmit data through 
-     "aTxBuffer" buffer */
-  /* Timeout is set to 10S */
-  if(HAL_I2C_Slave_Transmit(&I2cHandle, (uint8_t*)aTxBuffer, TXBUFFERSIZE, 30000)!= HAL_OK)
-  {
-    /* Transfer error in transmission process */
-    Error_Handler();    
-  }
-  
-  /* Turn LED2 off: Transfer in transmission process is correct */
-  BSP_LED_Off();
-  
-#endif /* MASTER_BOARD */
 
   /*##-4- Compare the sent and received buffers ##############################*/
   if(Buffercmp((uint8_t*)aTxBuffer,(uint8_t*)aRxBuffer,RXBUFFERSIZE))
