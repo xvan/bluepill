@@ -335,7 +335,8 @@ void si5351_update_status(void)
  */
 bool si5351_ping(void){
 	uint8_t reg_val = 0;
-	return (si5351_read(SI5351_DEVICE_STATUS, &reg_val) == 0);
+	si5351_read(SI5351_DEVICE_STATUS, &reg_val);
+	return (reg_val == 0);
 }
 
 /* si5351_set_correction(int32_t corr)
@@ -624,19 +625,8 @@ uint8_t si5351_write(uint8_t addr, uint8_t data)
 
 uint8_t si5351_read(uint8_t addr, uint8_t *data)
 {
-	while(HAL_I2C_Master_Receive(&I2cHandle, addr, data, 1, 10000) != HAL_OK)
-	{
-    /* Error_Handler() function is called when Timeout error occurs.
-       When Acknowledge failure occurs (Slave don't acknowledge it's address)
-       Master restarts communication */
-	   
-		if (HAL_I2C_GetError(&I2cHandle) != HAL_I2C_ERROR_AF)
-		{
-      		return 1;
-		}			
-  	}
-
-	return 0;
+	return HAL_I2C_Mem_Read(&I2cHandle,SI5351_BUS_BASE_ADDR << 1, addr, 1, data, 1, 10000) == HAL_OK ? 0 : 1;
+	//return (HAL_I2C_Master_Receive(&I2cHandle, addr, data, 1, 10000) == HAL_OK) ? 0 : 1;
 }
 
 

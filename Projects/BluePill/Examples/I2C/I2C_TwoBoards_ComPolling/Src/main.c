@@ -99,7 +99,7 @@ int main(void)
   I2cHandle.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
   I2cHandle.Init.OwnAddress2     = 0xFF;
   I2cHandle.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  I2cHandle.Init.NoStretchMode   = I2C_NOSTRETCH_DISABLE;  
+  I2cHandle.Init.NoStretchMode   = I2C_NOSTRETCH_DISABLE;
   
   if(HAL_I2C_Init(&I2cHandle) != HAL_OK)
   {
@@ -107,7 +107,8 @@ int main(void)
     Error_Handler();
   }
 
-  si5351_ping();
+  volatile uint8_t rval;
+  rval = si5351_ping();
 
   /*##-4- Compare the sent and received buffers ##############################*/
   if(Buffercmp((uint8_t*)aTxBuffer,(uint8_t*)aRxBuffer,RXBUFFERSIZE))
