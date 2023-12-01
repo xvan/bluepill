@@ -28,6 +28,20 @@
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 
+
+typedef enum state_enum {
+  medicion,
+  media,
+  estimacion,
+  tiempoRemanente,
+  datalog,
+  reposo,
+  zonaSegura,
+  alarma
+} state_enum;
+
+
+state_enum estado = medicion;
 /* Private user code ---------------------------------------------------------*/
 
 /**
@@ -61,15 +75,45 @@ int main(void)
   /* Infinite loop */
   while (1)
   {    
+    switch (estado) {
+    // case 1:
+    //   medicion(); //adquiere continuamente la tension y corriente. c/21 muestras calcula la mediana
+    //   break;
+    // case 2:
+    //   media();  // promedio de las medianas
+    //   break;
+    // case 3:
+    //   estimacion(); // filtro de kalman 
+    //   break;
+    // case 4:
+    //   TiempoRemanente(); // calculo de tiempo remanente (ahora esta sin uso)
+    //   break;
+    // case 5:
+    //   datalog(); // guarda en la SD
+    //   break;
+    // case 6:
+    //   reposo(); // estima el soc y x con la EMF inversa
+    //   break;
+    // case 7:
+    //   ZonaSegura(); // verifica que los valores adquiridos esten dentro de los limites seguros
+    //   break; 
+    // case 8:
+    //   Alarma();  // activa los pines que activaran la llave de corte
+    //   break;          
+    default:
+      //Standby
+      break;
+  }
+    
+    
     // Echo data
-    uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
-    if (bytesAvailable > 0) {
-    	uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
-    	if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK) {
-            while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY);
-    	}
-    }
-
+    // uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
+    // if (bytesAvailable > 0) {
+    // 	uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
+    // 	if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK) {
+    //         while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY);
+    // 	}
+    // }
   }
 }
 
