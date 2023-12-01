@@ -603,7 +603,7 @@ multisynth_recalc(uint32_t freq, uint32_t pll_freq, struct Si5351RegSet *reg)
 }
 
 uint8_t si5351_write_bulk(uint8_t addr, uint8_t bytes, uint8_t *data)
-{		
+{			
 	while(HAL_I2C_Master_Transmit(&I2cHandle, addr, data, bytes, 10000)!= HAL_OK){
 	/* Error_Handler() function is called when Timeout error occurs.
 	   When Acknowledge failure occurs (Slave don't acknowledge its address)
