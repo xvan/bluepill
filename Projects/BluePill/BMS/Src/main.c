@@ -27,21 +27,22 @@
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+void medicion(void);
 
 
 typedef enum state_enum {
-  medicion,
-  media,
-  estimacion,
-  tiempoRemanente,
-  datalog,
-  reposo,
-  zonaSegura,
-  alarma
+  STATE_MEDICION,
+  STATE_MEDIA,
+  STATE_ESTIMACION,
+  STATE_TIEMPOREMANENTE,
+  STATE_DATALOG,
+  STATE_REPOSO,
+  STATE_ZONASEGURA,
+  STATE_ALARMA
 } state_enum;
 
 
-state_enum estado = medicion;
+state_enum estado = STATE_MEDICION;
 /* Private user code ---------------------------------------------------------*/
 
 /**
@@ -74,8 +75,40 @@ int main(void)
 
   /* Infinite loop */
   while (1)
-  {    
-    switch (estado) {
+  {  
+    switch (estado)
+    {//complete with all cases
+      case STATE_MEDICION:
+        //adquiere continuamente la tension y corriente. c/21 muestras calcula la mediana
+        medicion();
+        break;
+      case STATE_MEDIA:
+        // promedio de las medianas
+        break;
+      case STATE_ESTIMACION:
+        // filtro de kalman 
+        break;
+      case STATE_TIEMPOREMANENTE:
+        // calculo de tiempo remanente (ahora esta sin uso)
+        break;
+      case STATE_DATALOG:
+        // guarda en la SD
+        break;
+      case STATE_REPOSO:
+        // estima el soc y x con la EMF inversa
+        break;
+      case STATE_ZONASEGURA:
+        // verifica que los valores adquiridos esten dentro de los limites seguros
+        break; 
+      case STATE_ALARMA:
+        // activa los pines que activaran la llave de corte
+        break;          
+      default:
+        //Standby
+        break;
+    }    
+
+    //switch (estado) {
     // case 1:
     //   medicion(); //adquiere continuamente la tension y corriente. c/21 muestras calcula la mediana
     //   break;
@@ -100,9 +133,9 @@ int main(void)
     // case 8:
     //   Alarma();  // activa los pines que activaran la llave de corte
     //   break;          
-    default:
+    //default:
       //Standby
-      break;
+    //  break;
   }
     
     
@@ -113,8 +146,12 @@ int main(void)
     // 	if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK) {
     //         while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY);
     // 	}
-    // }
-  }
+    // }  
+}
+
+
+void medicion(){
+  
 }
 
 /**
