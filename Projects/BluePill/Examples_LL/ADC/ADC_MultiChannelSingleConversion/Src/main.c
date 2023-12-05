@@ -75,7 +75,7 @@
 /* Definitions of environment analog values */
   /* Value of analog reference voltage (Vref+), connected to analog voltage   */
   /* supply Vdda (unit: mV).                                                  */
-  #define VDDA_APPLI                       ((uint32_t)3300)
+  #define VDDA_APPLI                       ((uint32_t)3300)       
 
 /* Definitions of data related to this example */
   /* Definition of ADCx conversions data table size */
@@ -171,6 +171,10 @@ int main(void)
     /*                                (ADC1 internal channel temperature sensor)*/
 
     /* Wait for ADC conversion and DMA transfer completion to process data */
+
+    ubDmaTransferStatus = 0;
+    LL_ADC_REG_StartConversionSWStart(ADC1);
+
     while(ubDmaTransferStatus != 1)
     {
     }
@@ -185,11 +189,6 @@ int main(void)
                                                                                         VDDA_APPLI,
                                                                                         aADCxConvertedData[2],
                                                                                         LL_ADC_RESOLUTION_12B);
-    
-    /* Wait for a new ADC conversion and DMA transfer */
-    while(ubDmaTransferStatus != 0)
-    {
-    }
     
   }
 }
@@ -726,7 +725,7 @@ void SystemClock_Config(void)
   LL_FLASH_SetLatency(LL_FLASH_LATENCY_2);
 
   /* Enable HSE oscillator */
-  LL_RCC_HSE_EnableBypass();
+  LL_RCC_HSE_DisableBypass();
   LL_RCC_HSE_Enable();
   while(LL_RCC_HSE_IsReady() != 1)
   {
@@ -800,7 +799,7 @@ void UserButton_Callback(void)
   /*       they are not relevant considering previous settings and actions    */
   /*       in user application.                                               */
   if (LL_ADC_IsEnabled(ADC1) == 1)
-  {
+  {    
     LL_ADC_REG_StartConversionSWStart(ADC1);
   }
   else

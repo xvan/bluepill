@@ -207,7 +207,7 @@ int main(void)
 
   /* Infinite loop */
   while (1)
-  {
+  {    
     while (ubDmaTransferStatus != 1)
     {
     }
@@ -221,19 +221,25 @@ int main(void)
                                                                                         INTERNAL_TEMPSENSOR_V25_TEMP,
                                                                                         VDDA_APPLI,
                                                                                         aADCxConvertedData[2],
-                                                                                        LL_ADC_RESOLUTION_12B);
+                                                                                                                                                                                                                                                           LL_ADC_RESOLUTION_12B);
+
+    char txData[256];
+    sprintf((char *)txData, "ADC conversion data: %d\t%d\t%d\r\n", aADCxConvertedData[0], aADCxConvertedData[1], aADCxConvertedData[2]);
+
+    while (CDC_Transmit_FS(txData, strlen(txData)) == USBD_BUSY);
 
     // Echo data
-    uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
-    if (bytesAvailable > 0)
-    {
-      uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
-      if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK)
-      {
-        while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY)
-          ;
-      }
-    }
+    // uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
+    // if (bytesAvailable > 0)
+    // {
+    //   uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
+    //   if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK)
+    //   {
+    //     while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY)
+    //       ;
+    //   }
+    // }
+    //
   }
 }
 
@@ -351,12 +357,7 @@ void SystemClock_Config(void)
 void AdcDmaTransferComplete_Callback()
 {
   /* Update status variable of DMA transfer */
-  ubDmaTransferStatus = 1;
-
-  /* Set LED depending on DMA transfer status */
-  /* - Turn-on if DMA transfer is completed */
-  /* - Turn-off if DMA transfer is not completed */
-  LED_On();
+  ubDmaTransferStatus = 1;  
 }
 
 /**
@@ -452,12 +453,14 @@ void Configure_ADC(void)
   LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_GPIOA);
 
   /* Configure GPIO in analog mode to be used as ADC input */
-  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_0, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_4, LL_GPIO_MODE_ANALOG);
+  /*LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_1, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_2, LL_GPIO_MODE_ANALOG);*/
 
   /*## Configuration of NVIC #################################################*/
   /* Configure NVIC to enable ADC1 interruptions */
   NVIC_SetPriority(ADC1_IRQn, 0); /* ADC IRQ greater priority than DMA IRQ */
-  NVIC_EnableIRQ(ADC1_IRQn);
+  //NVIC_EnableIRQ(ADC1_IRQn);
 
   /*## Configuration of ADC ##################################################*/
 
@@ -762,6 +765,15 @@ void Error_Handler(void)
 void TimerUpdate_Callback(void)
 {
   HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+
+  
+
+  if (ubDmaTransferStatus != 0)
+  {
+    ubDmaTransferStatus = 0;
+    LL_ADC_REG_StartConversionSWStart(ADC1);
+  }
+
   // LL_GPIO_TogglePin(LED2_GPIO_PORT, LED2_PIN);
 }
 

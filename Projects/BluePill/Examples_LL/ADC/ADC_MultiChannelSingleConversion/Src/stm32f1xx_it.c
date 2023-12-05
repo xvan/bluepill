@@ -172,6 +172,7 @@ void USER_BUTTON_IRQHANDLER(void)
   */
 void ADC1_IRQHandler(void)
 {
+   volatile int sensor_value = LL_ADC_REG_ReadConversionData32(ADC1);
 }
 
 /**

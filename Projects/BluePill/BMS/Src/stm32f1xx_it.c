@@ -102,5 +102,10 @@ void DMA1_Channel1_IRQHandler(void)
     LL_DMA_ClearFlag_TE1(DMA1);
     AdcDmaTransferError_Callback();
   }
+
+
 }
 
+void ADC1_IRQHandler(void)
+{
+}
