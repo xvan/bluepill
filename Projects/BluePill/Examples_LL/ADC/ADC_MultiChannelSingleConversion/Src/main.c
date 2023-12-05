@@ -596,9 +596,6 @@ void Activate_ADC(void)
       }
     #endif /* USE_TIMEOUT */
     }
-
-    
-    
   }
   
   /*## Operation on ADC hierarchical scope: ADC group regular ################*/
