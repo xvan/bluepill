@@ -28,6 +28,26 @@
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 void medicion(void);
+void Configure_TIMTimeBase(void);
+
+
+#define BUTTON_MODE_GPIO  0
+#define BUTTON_MODE_EXTI  1
+
+/* Number of time base frequencies */
+#define TIM_BASE_FREQ_NB 10
+
+/* Private macro -------------------------------------------------------------*/
+/* Private variables ---------------------------------------------------------*/
+/* Initial autoreload value */
+static uint32_t InitialAutoreload = 0;
+
+/* Actual autoreload value multiplication factor */
+static uint8_t AutoreloadMult = 1;
+
+/* TIM2 Clock */
+static uint32_t TimOutClock = 1;
+
 
 
 typedef enum state_enum {
@@ -72,6 +92,8 @@ int main(void)
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
   HAL_Delay(500);
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+
+  Configure_TIMTimeBase();
 
   /* Infinite loop */
   // while (1)
@@ -154,6 +176,49 @@ int main(void)
   }
 }
 
+
+ void  Configure_TIMTimeBase(void)
+{
+  /* Enable the timer peripheral clock */
+  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2); 
+  
+  /* Set counter mode */
+  /* Reset value is LL_TIM_COUNTERMODE_UP */
+  //LL_TIM_SetCounterMode(TIM2, LL_TIM_COUNTERMODE_UP);
+
+  /* Set the pre-scaler value to have TIM2 counter clock equal to 10 kHz      */
+  /*
+    In this example TIM2 input clock (TIM2CLK)  is set to APB1 clock (PCLK1),
+    since APB1 prescaler is equal to 1.
+      TIM2CLK = PCLK1
+      PCLK1 = HCLK
+      => TIM2CLK = HCLK = SystemCoreClock
+    To get TIM2 counter clock at 10 KHz, the Prescaler is computed as following:
+    Prescaler = (TIM2CLK / TIM2 counter clock) - 1
+    Prescaler = (SystemCoreClock /10 KHz) - 1
+  */
+  LL_TIM_SetPrescaler(TIM2, __LL_TIM_CALC_PSC(SystemCoreClock, 10000));
+  
+  /* Set the auto-reload value to have an initial update event frequency of 10 Hz */
+    /* TIM2CLK = SystemCoreClock / (APB prescaler & multiplier)                 */
+  TimOutClock = SystemCoreClock/2;
+  
+  InitialAutoreload = __LL_TIM_CALC_ARR(TimOutClock, LL_TIM_GetPrescaler(TIM2), 10);
+  LL_TIM_SetAutoReload(TIM2, InitialAutoreload);
+  
+  /* Enable the update interrupt */
+  LL_TIM_EnableIT_UPDATE(TIM2);
+  
+  /* Configure the NVIC to handle TIM2 update interrupt */
+  NVIC_SetPriority(TIM2_IRQn, 0);
+  NVIC_EnableIRQ(TIM2_IRQn);
+  
+  /* Enable counter */
+  LL_TIM_EnableCounter(TIM2);
+  
+  /* Force update generation */
+  LL_TIM_GenerateEvent_UPDATE(TIM2);
+}
 
 void medicion(){
   
@@ -244,6 +309,12 @@ void Error_Handler(void)
   {
   }
   /* USER CODE END Error_Handler_Debug */
+}
+
+void TimerUpdate_Callback(void)
+{
+  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+  //LL_GPIO_TogglePin(LED2_GPIO_PORT, LED2_PIN);  
 }
 
 #ifdef  USE_FULL_ASSERT
