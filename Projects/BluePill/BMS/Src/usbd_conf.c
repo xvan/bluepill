@@ -25,6 +25,7 @@
 #include "usbd_def.h"
 #include "usbd_core.h"
 #include "usbd_cdc.h"
+#include "common.h"
 
 /* USER CODE BEGIN Includes */
 
@@ -40,7 +41,6 @@
 /* USER CODE END PV */
 
 PCD_HandleTypeDef hpcd_USB_FS;
-void Error_Handler(void);
 
 /* USER CODE BEGIN 0 */
 
@@ -54,13 +54,6 @@ void Error_Handler(void);
 /* Private functions ---------------------------------------------------------*/
 static USBD_StatusTypeDef USBD_Get_USB_Status(HAL_StatusTypeDef hal_status);
 /* USER CODE BEGIN 1 */
-
-/* USER CODE END 1 */
-#if (USE_HAL_PCD_REGISTER_CALLBACKS == 1U)
-static void PCDEx_SetConnectionState(PCD_HandleTypeDef *hpcd, uint8_t state);
-#else
-void HAL_PCDEx_SetConnectionState(PCD_HandleTypeDef *hpcd, uint8_t state);
-#endif /* USE_HAL_PCD_REGISTER_CALLBACKS */
 
 /*******************************************************************************
                        LL Driver Callbacks (PCD -> USB Device Library)

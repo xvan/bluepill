@@ -25,10 +25,23 @@
 #include "usbd_cdc_if.h"
 
 /* Private function prototypes -----------------------------------------------*/
-void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-void medicion(void);
 
+
+__STATIC_INLINE void     SystemClock_Config(void); /*Multiple*/
+__STATIC_INLINE void     MX_GPIO_Init(void); /*USB CDC*/
+__STATIC_INLINE void     Configure_TIMTimeBase(void); /*TIMER*/
+// __STATIC_INLINE void     LED_Init(void); /*TIMER*/
+
+/* Timer code starts here ----------------------------------------------------*/
+
+/* Number of time base frequencies */
+#define TIM_BASE_FREQ_NB 10
+static uint32_t InitialAutoreload = 0;
+
+/* TIM2 Clock */
+static uint32_t TimOutClock = 1;
+
+/* BMS code starts from here -------------------------------------------------*/
 
 typedef enum state_enum {
   STATE_MEDICION,
@@ -41,6 +54,7 @@ typedef enum state_enum {
   STATE_ALARMA
 } state_enum;
 
+void medicion(void);
 
 state_enum estado = STATE_MEDICION;
 /* Private user code ---------------------------------------------------------*/
@@ -72,6 +86,8 @@ int main(void)
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
   HAL_Delay(500);
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+
+  //Configure_TIMTimeBase();
 
   /* Infinite loop */
   // while (1)
@@ -159,6 +175,52 @@ void medicion(){
   
 }
 
+
+__STATIC_INLINE void  Configure_TIMTimeBase(void)
+{
+  /* Enable the timer peripheral clock */
+  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2); 
+  
+  /* Set counter mode */
+  /* Reset value is LL_TIM_COUNTERMODE_UP */
+  //LL_TIM_SetCounterMode(TIM2, LL_TIM_COUNTERMODE_UP);
+
+  /* Set the pre-scaler value to have TIM2 counter clock equal to 10 kHz      */
+  /*
+    In this example TIM2 input clock (TIM2CLK)  is set to APB1 clock (PCLK1),
+    since APB1 prescaler is equal to 1.
+      TIM2CLK = PCLK1
+      PCLK1 = HCLK
+      => TIM2CLK = HCLK = SystemCoreClock
+    To get TIM2 counter clock at 10 KHz, the Prescaler is computed as following:
+    Prescaler = (TIM2CLK / TIM2 counter clock) - 1
+    Prescaler = (SystemCoreClock /10 KHz) - 1
+  */
+  LL_TIM_SetPrescaler(TIM2, __LL_TIM_CALC_PSC(SystemCoreClock, 10000));
+  
+  /* Set the auto-reload value to have an initial update event frequency of 10 Hz */
+    /* TIM2CLK = SystemCoreClock / (APB prescaler & multiplier)                 */
+  TimOutClock = SystemCoreClock/2;
+  
+  InitialAutoreload = __LL_TIM_CALC_ARR(TimOutClock, LL_TIM_GetPrescaler(TIM2), 10);
+  LL_TIM_SetAutoReload(TIM2, InitialAutoreload);
+  
+  /* Enable the update interrupt */
+  LL_TIM_EnableIT_UPDATE(TIM2);
+  
+  /* Configure the NVIC to handle TIM2 update interrupt */
+  NVIC_SetPriority(TIM2_IRQn, 0);
+  NVIC_EnableIRQ(TIM2_IRQn);
+  
+  /* Enable counter */
+  LL_TIM_EnableCounter(TIM2);
+  
+  /* Force update generation */
+  LL_TIM_GenerateEvent_UPDATE(TIM2);
+}
+
+
+
 /**
   * @brief System Clock Configuration
   * @retval None
@@ -209,6 +271,12 @@ void SystemClock_Config(void)
   * @param None
   * @retval None
   */
+
+ void TimerUpdate_Callback(void)
+{
+  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+}
+
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -227,9 +295,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
-
 }
 
+
+
+void Default_Handler(void){
+  Error_Handler();
+}
 
 /**
   * @brief  This function is executed in case of error occurrence.
@@ -238,10 +310,15 @@ static void MX_GPIO_Init(void)
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
+  /* User can add his own implementation to report the HAL error return state */  
+  volatile int x[8];
+  for (int i = 0; i < 8; i++) {
+    x[i] = NVIC->IABR[i];
+  }
+
   __disable_irq();
   while (1)
-  {
+  {    
   }
   /* USER CODE END Error_Handler_Debug */
 }

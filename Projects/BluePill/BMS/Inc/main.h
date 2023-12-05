@@ -19,55 +19,46 @@
   */
 /* USER CODE END Header */
 
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
+
+
 /* Define to prevent recursive inclusion -------------------------------------*/
 #ifndef __MAIN_H
 #define __MAIN_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f1xx_hal.h"
-
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
-
-/* USER CODE END Includes */
+#include "stm32f1xx_ll_bus.h"
+#include "stm32f1xx_ll_rcc.h"
+#include "stm32f1xx_ll_pwr.h"
+#include "stm32f1xx_ll_system.h"
+#include "stm32f1xx_ll_utils.h"
+#include "stm32f1xx_ll_gpio.h"
+#include "stm32f1xx_ll_exti.h"
+#include "stm32f1xx_ll_tim.h"
+#include "common.h"
+#if defined(USE_FULL_ASSERT)
+#include "stm32_assert.h"
+#endif /* USE_FULL_ASSERT */
 
 /* Exported types ------------------------------------------------------------*/
-/* USER CODE BEGIN ET */
-
-/* USER CODE END ET */
-
 /* Exported constants --------------------------------------------------------*/
-/* USER CODE BEGIN EC */
 
-/* USER CODE END EC */
+/**
+  * @brief LED2 
+  */
 
-/* Exported macro ------------------------------------------------------------*/
-/* USER CODE BEGIN EM */
-
-/* USER CODE END EM */
-
-/* Exported functions prototypes ---------------------------------------------*/
-void Error_Handler(void);
-
-/* USER CODE BEGIN EFP */
-
-/* USER CODE END EFP */
-
-/* Private defines -----------------------------------------------------------*/
 #define LED_Pin GPIO_PIN_13
 #define LED_GPIO_Port GPIOC
-/* USER CODE BEGIN Private defines */
 
-/* USER CODE END Private defines */
+// #define LED2_PIN                           LL_GPIO_PIN_13
+// #define LED2_GPIO_PORT                     GPIOC
+// #define LED2_GPIO_CLK_ENABLE()             LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_GPIOC)
 
-#ifdef __cplusplus
-}
-#endif
+/* TIM2 update interrupt processing */
+void TimerUpdate_Callback(void);
+void Default_Handler(void);
+
+
 
 #endif /* __MAIN_H */
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

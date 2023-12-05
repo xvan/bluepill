@@ -110,12 +110,13 @@ LoopForever:
  * @param  None
  * @retval : None
 */
+/*
   .section .text.Default_Handler,"ax",%progbits
 Default_Handler:
 Infinite_Loop:
   b Infinite_Loop
   .size Default_Handler, .-Default_Handler
-
+*/
 /******************************************************************************
 *
 * The STM32F103C8Tx vector table.  Note that the proper constructs
