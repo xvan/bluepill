@@ -34,8 +34,7 @@ static void MX_GPIO_Init(void);
   * @brief  The application entry point.
   * @retval int
   */
-int main(void)
-{
+int main(void){
 
   /* MCU Configuration--------------------------------------------------------*/
 

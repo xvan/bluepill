@@ -74,39 +74,39 @@ int main(void)
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
 
   /* Infinite loop */
-  while (1)
-  {  
-    switch (estado)
-    {//complete with all cases
-      case STATE_MEDICION:
-        //adquiere continuamente la tension y corriente. c/21 muestras calcula la mediana
-        medicion();
-        break;
-      case STATE_MEDIA:
-        // promedio de las medianas
-        break;
-      case STATE_ESTIMACION:
-        // filtro de kalman 
-        break;
-      case STATE_TIEMPOREMANENTE:
-        // calculo de tiempo remanente (ahora esta sin uso)
-        break;
-      case STATE_DATALOG:
-        // guarda en la SD
-        break;
-      case STATE_REPOSO:
-        // estima el soc y x con la EMF inversa
-        break;
-      case STATE_ZONASEGURA:
-        // verifica que los valores adquiridos esten dentro de los limites seguros
-        break; 
-      case STATE_ALARMA:
-        // activa los pines que activaran la llave de corte
-        break;          
-      default:
-        //Standby
-        break;
-    }    
+  // while (1)
+  // {  
+  //   switch (estado)
+  //   {//complete with all cases
+  //     case STATE_MEDICION:
+  //       //adquiere continuamente la tension y corriente. c/21 muestras calcula la mediana
+  //       medicion();
+  //       break;
+  //     case STATE_MEDIA:
+  //       // promedio de las medianas
+  //       break;
+  //     case STATE_ESTIMACION:
+  //       // filtro de kalman 
+  //       break;
+  //     case STATE_TIEMPOREMANENTE:
+  //       // calculo de tiempo remanente (ahora esta sin uso)
+  //       break;
+  //     case STATE_DATALOG:
+  //       // guarda en la SD
+  //       break;
+  //     case STATE_REPOSO:
+  //       // estima el soc y x con la EMF inversa
+  //       break;
+  //     case STATE_ZONASEGURA:
+  //       // verifica que los valores adquiridos esten dentro de los limites seguros
+  //       break; 
+  //     case STATE_ALARMA:
+  //       // activa los pines que activaran la llave de corte
+  //       break;          
+  //     default:
+  //       //Standby
+  //       break;
+  //   }    
 
     //switch (estado) {
     // case 1:
@@ -136,17 +136,22 @@ int main(void)
     //default:
       //Standby
     //  break;
-  }
+    //}
     
     
+  /* Infinite loop */
+  while (1)
+  {    
     // Echo data
-    // uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
-    // if (bytesAvailable > 0) {
-    // 	uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
-    // 	if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK) {
-    //         while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY);
-    // 	}
-    // }  
+    uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
+    if (bytesAvailable > 0) {
+    	uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
+    	if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK) {
+            while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY);
+    	}
+    }
+
+  }
 }
 
 
