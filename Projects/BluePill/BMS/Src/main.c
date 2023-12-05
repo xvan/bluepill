@@ -24,6 +24,47 @@
 /* Private includes ----------------------------------------------------------*/
 #include "usbd_cdc_if.h"
 
+
+/* Adc Stuff -----------------------------------------------------------------*/
+#define ADC_CALIBRATION_TIMEOUT_MS       ((uint32_t)   1)
+#define ADC_ENABLE_TIMEOUT_MS            ((uint32_t)   1)
+#define ADC_DISABLE_TIMEOUT_MS           ((uint32_t)   1)
+#define ADC_STOP_CONVERSION_TIMEOUT_MS   ((uint32_t)   1)
+#define ADC_CONVERSION_TIMEOUT_MS        ((uint32_t)   2)
+
+  /* Delay between ADC enable and ADC end of calibration.                     */
+  /* Delay estimation in CPU cycles: Case of ADC calibration done             */
+  /* immediately after ADC enable, ADC clock setting slow                     */
+  /* (LL_ADC_CLOCK_ASYNC_DIV32). Use a higher delay if ratio                  */
+  /* (CPU clock / ADC clock) is above 32.                                     */
+  #define ADC_DELAY_ENABLE_CALIB_CPU_CYCLES  (LL_ADC_DELAY_ENABLE_CALIB_ADC_CYCLES * 32)
+
+/* Definitions of environment analog values */
+  /* Value of analog reference voltage (Vref+), connected to analog voltage   */
+  /* supply Vdda (unit: mV).                                                  */
+  #define VDDA_APPLI                       ((uint32_t)3300)
+
+/* Definitions of data related to this example */
+  /* Definition of ADCx conversions data table size */
+  /* Size of array set to ADC sequencer number of ranks converted,            */
+  /* to have a rank in each array address.                                    */
+  #define ADC_CONVERTED_DATA_BUFFER_SIZE   ((uint32_t)   3)
+
+/* Variables for ADC conversion data */
+__IO uint16_t aADCxConvertedData[ADC_CONVERTED_DATA_BUFFER_SIZE]; /* ADC group regular conversion data */
+
+/* Variable to report status of DMA transfer of ADC group regular conversions */
+/*  0: DMA transfer is not completed                                          */
+/*  1: DMA transfer is completed                                              */
+/*  2: DMA transfer has not been started yet (initial state)                  */
+__IO uint8_t ubDmaTransferStatus = 2; /* Variable set into DMA interruption callback */
+
+
+/* Variables for ADC conversion data computation to physical values */
+__IO uint16_t uhADCxConvertedData_VoltageGPIO_mVolt = 0;        /* Value of voltage on GPIO pin (on which is mapped ADC channel) calculated from ADC conversion data (unit: mV) */
+__IO uint16_t uhADCxConvertedData_VrefInt_mVolt = 0;            /* Value of internal voltage reference VrefInt calculated from ADC conversion data (unit: mV) */
+__IO  int16_t hADCxConvertedData_Temperature_DegreeCelsius = 0; /* Value of temperature calculated from ADC conversion data (unit: degree Celsius) */
+
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
@@ -34,11 +75,17 @@ void LED_On(void);
 void LED_Off(void);
 void LED_Blinking(uint32_t Period);
 
+void     Configure_DMA(void);
+void     Configure_ADC(void);
+void     Activate_ADC(void);
+
 #define BUTTON_MODE_GPIO  0
 #define BUTTON_MODE_EXTI  1
 
 /* Number of time base frequencies */
 #define TIM_BASE_FREQ_NB 10
+
+
 
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
@@ -47,12 +94,6 @@ static uint32_t InitialAutoreload = 0;
 
 /* TIM2 Clock */
 static uint32_t TimOutClock = 1;
-
-/* Variable to report status of DMA transfer of ADC group regular conversions */
-/*  0: DMA transfer is not completed                                          */
-/*  1: DMA transfer is completed                                              */
-/*  2: DMA transfer has not been started yet (initial state)                  */
-__IO uint8_t ubDmaTransferStatus = 2; /* Variable set into DMA interruption callback */
 
 typedef enum state_enum {
   STATE_MEDICION,
@@ -91,6 +132,8 @@ int main(void)
   // Read buffer
   uint8_t rxData[8];
   memset(rxData, 0, 8);
+
+  Configure_DMA();
 
   // Flash LED briefly on reset
   LED_On();
@@ -329,6 +372,64 @@ static void MX_GPIO_Init(void)
 
 }
 
+
+void Configure_DMA(void)
+{
+  /*## Configuration of NVIC #################################################*/
+  /* Configure NVIC to enable DMA interruptions */
+  NVIC_SetPriority(DMA1_Channel1_IRQn, 1);  /* DMA IRQ lower priority than ADC IRQ */
+  NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+  
+  /*## Configuration of DMA ##################################################*/
+  /* Enable the peripheral clock of DMA */
+  LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_DMA1);
+  
+  /* Configure the DMA transfer */
+  /*  - DMA transfer in circular mode to match with ADC configuration:        */
+  /*    DMA unlimited requests.                                               */
+  /*  - DMA transfer from ADC without address increment.                      */
+  /*  - DMA transfer to memory with address increment.                        */
+  /*  - DMA transfer from ADC by half-word to match with ADC configuration:   */
+  /*    ADC resolution 12 bits.                                               */
+  /*  - DMA transfer to memory by half-word to match with ADC conversion data */
+  /*    buffer variable type: half-word.                                      */
+  LL_DMA_ConfigTransfer(DMA1,
+                        LL_DMA_CHANNEL_1,
+                        LL_DMA_DIRECTION_PERIPH_TO_MEMORY |
+                        LL_DMA_MODE_CIRCULAR              |
+                        LL_DMA_PERIPH_NOINCREMENT         |
+                        LL_DMA_MEMORY_INCREMENT           |
+                        LL_DMA_PDATAALIGN_HALFWORD        |
+                        LL_DMA_MDATAALIGN_HALFWORD        |
+                        LL_DMA_PRIORITY_HIGH               );
+  
+ /* Set DMA transfer addresses of source and destination */
+  LL_DMA_ConfigAddresses(DMA1,
+                         LL_DMA_CHANNEL_1,
+                         LL_ADC_DMA_GetRegAddr(ADC1, LL_ADC_DMA_REG_REGULAR_DATA),
+                         (uint32_t)&aADCxConvertedData,
+                         LL_DMA_DIRECTION_PERIPH_TO_MEMORY);
+  
+  /* Set DMA transfer size */
+  LL_DMA_SetDataLength(DMA1,
+                         LL_DMA_CHANNEL_1,
+                       ADC_CONVERTED_DATA_BUFFER_SIZE);
+  
+  /* Enable DMA transfer interruption: transfer complete */
+  LL_DMA_EnableIT_TC(DMA1,
+                        LL_DMA_CHANNEL_1);
+
+
+  
+  /* Enable DMA transfer interruption: transfer error */
+  LL_DMA_EnableIT_TE(DMA1,
+                        LL_DMA_CHANNEL_1);
+  
+  /*## Activation of DMA #####################################################*/
+  /* Enable the DMA transfer */
+  LL_DMA_EnableChannel(DMA1,
+                       LL_DMA_CHANNEL_1);
+}
 
 void AdcDmaTransferError_Callback()
 {
