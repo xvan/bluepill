@@ -31,6 +31,8 @@ extern "C" {
 #include "stm32f1xx_hal.h"
 #include "stm32f1xx_ll_tim.h"
 #include "stm32f1xx_ll_bus.h"
+#include "stm32f1xx_ll_dma.h"
+#include "stm32f1xx_ll_adc.h"
 
 //
 void Error_Handler(void);
@@ -39,13 +41,18 @@ void Error_Handler(void);
 #define LED_Pin GPIO_PIN_13
 #define LED_GPIO_Port GPIOC
 
+#define LED_BLINK_FAST  200
+#define LED_BLINK_SLOW  500
+#define LED_BLINK_ERROR 1000
+
 //#define LED2_PIN                           LL_GPIO_PIN_13
 //#define LED2_GPIO_PORT                     GPIOC
 //#define LED2_GPIO_CLK_ENABLE()             LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_GPIOC)
 
 /* TIM2 update interrupt processing */
 void TimerUpdate_Callback(void);
-
+void AdcDmaTransferComplete_Callback(void);
+void AdcDmaTransferError_Callback(void);
 
 #ifdef __cplusplus
 }

@@ -30,6 +30,9 @@ static void MX_GPIO_Init(void);
 void medicion(void);
 void Configure_TIMTimeBase(void);
 
+void LED_On(void);
+void LED_Off(void);
+void LED_Blinking(uint32_t Period);
 
 #define BUTTON_MODE_GPIO  0
 #define BUTTON_MODE_EXTI  1
@@ -42,13 +45,14 @@ void Configure_TIMTimeBase(void);
 /* Initial autoreload value */
 static uint32_t InitialAutoreload = 0;
 
-/* Actual autoreload value multiplication factor */
-static uint8_t AutoreloadMult = 1;
-
 /* TIM2 Clock */
 static uint32_t TimOutClock = 1;
 
-
+/* Variable to report status of DMA transfer of ADC group regular conversions */
+/*  0: DMA transfer is not completed                                          */
+/*  1: DMA transfer is completed                                              */
+/*  2: DMA transfer has not been started yet (initial state)                  */
+__IO uint8_t ubDmaTransferStatus = 2; /* Variable set into DMA interruption callback */
 
 typedef enum state_enum {
   STATE_MEDICION,
@@ -89,9 +93,9 @@ int main(void)
   memset(rxData, 0, 8);
 
   // Flash LED briefly on reset
-  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+  LED_On();
   HAL_Delay(500);
-  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+  LED_Off();
 
   Configure_TIMTimeBase();
 
@@ -176,8 +180,27 @@ int main(void)
   }
 }
 
+void LED_On(void)
+{
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+}
 
- void  Configure_TIMTimeBase(void)
+void LED_Off(void)
+{
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+}
+
+void LED_Blinking(uint32_t Period)
+{  
+  /* Toggle IO in an infinite loop */
+  while (1)
+  {
+    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);    
+    HAL_Delay(Period);
+  }
+}
+
+void  Configure_TIMTimeBase(void)
 {
   /* Enable the timer peripheral clock */
   LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2); 
@@ -269,6 +292,17 @@ void SystemClock_Config(void)
   }
 }
 
+void AdcDmaTransferComplete_Callback()
+{
+  /* Update status variable of DMA transfer */
+  ubDmaTransferStatus = 1;
+  
+  /* Set LED depending on DMA transfer status */
+  /* - Turn-on if DMA transfer is completed */
+  /* - Turn-off if DMA transfer is not completed */
+  LED_On();
+}
+
 /**
   * @brief GPIO Initialization Function
   * @param None
@@ -293,6 +327,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
 
+}
+
+
+void AdcDmaTransferError_Callback()
+{
+  /* Error detected during DMA transfer */
+  LED_Blinking(LED_BLINK_ERROR);
 }
 
 

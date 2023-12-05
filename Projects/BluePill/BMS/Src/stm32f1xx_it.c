@@ -89,3 +89,18 @@ void TIM2_IRQHandler(void)
   TimerUpdate_Callback();
 }
 
+void DMA1_Channel1_IRQHandler(void)
+{
+  if(LL_DMA_IsActiveFlag_TC1(DMA1) == 1)
+  {
+    LL_DMA_ClearFlag_TC1(DMA1);
+    AdcDmaTransferComplete_Callback();
+  }
+
+  if(LL_DMA_IsActiveFlag_TE1(DMA1) == 1)
+  {  
+    LL_DMA_ClearFlag_TE1(DMA1);
+    AdcDmaTransferError_Callback();
+  }
+}
+
