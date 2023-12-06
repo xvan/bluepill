@@ -179,12 +179,7 @@ int main(void)
     /* using LL ADC driver helper macro.                                      */
     uhADCxConvertedData_VoltageGPIO_mVolt        = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[0], LL_ADC_RESOLUTION_12B);
     uhADCxConvertedData_VrefInt_mVolt            = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[1], LL_ADC_RESOLUTION_12B);
-    hADCxConvertedData_Temperature_DegreeCelsius = __LL_ADC_CALC_TEMPERATURE_TYP_PARAMS(INTERNAL_TEMPSENSOR_AVGSLOPE, 
-	                                                                                    INTERNAL_TEMPSENSOR_V25,
-                                                                                        INTERNAL_TEMPSENSOR_V25_TEMP,
-                                                                                        VDDA_APPLI,
-                                                                                        aADCxConvertedData[2],
-                                                                                        LL_ADC_RESOLUTION_12B);
+    hADCxConvertedData_Temperature_DegreeCelsius = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[2], LL_ADC_RESOLUTION_12B);
     
     /* Wait for a new ADC conversion and DMA transfer */
     while(ubDmaTransferStatus != 0)
@@ -299,6 +294,8 @@ void Configure_ADC(void)
   
   /* Configure GPIO in analog mode to be used as ADC input */
   LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_4, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_3, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_2, LL_GPIO_MODE_ANALOG);
   
   /*## Configuration of NVIC #################################################*/
   /* Configure NVIC to enable ADC1 interruptions */
@@ -328,24 +325,9 @@ void Configure_ADC(void)
     /*       setting corresponding to default configuration from reset state. */
     
     /* Set ADC measurement path to internal channels */
-    LL_ADC_SetCommonPathInternalCh(__LL_ADC_COMMON_INSTANCE(ADC1), (LL_ADC_PATH_INTERNAL_VREFINT | LL_ADC_PATH_INTERNAL_TEMPSENSOR));
-    
-    /* Delay for ADC temperature sensor stabilization time.                   */
-    /* Compute number of CPU cycles to wait for, from delay in us.            */
-    /* Note: Variable divided by 2 to compensate partially                    */
-    /*       CPU processing cycles (depends on compilation optimization).     */
-    /* Note: If system core clock frequency is below 200kHz, wait time        */
-    /*       is only a few CPU processing cycles.                             */
-    /* Note: This delay is implemented here for the purpose in this example.  */
-    /*       It can be optimized if merged with other delays                  */
-    /*       during ADC activation or if other actions are performed          */
-    /*       in the meantime.                                                 */
-    wait_loop_index = ((LL_ADC_DELAY_TEMPSENSOR_STAB_US * (SystemCoreClock / (100000 * 2))) / 10);
-    while(wait_loop_index != 0)
-    {
-      wait_loop_index--;
-    }
-  
+    LL_ADC_SetCommonPathInternalCh(__LL_ADC_COMMON_INSTANCE(ADC1), LL_ADC_PATH_INTERNAL_NONE);
+   
+   
   /*## Configuration of ADC hierarchical scope: multimode ####################*/
   
     /* Set ADC multimode configuration */
@@ -421,8 +403,8 @@ void Configure_ADC(void)
     
     /* Set ADC group regular sequence: channel on the selected sequence rank. */
     LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_4);
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_VREFINT);
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_TEMPSENSOR);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_3);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_2);
   }
   
   
@@ -491,9 +473,8 @@ void Configure_ADC(void)
     /*       Refer to description of function                                 */
     /*       "LL_ADC_SetChannelSamplingTime()".                               */
     LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_4, LL_ADC_SAMPLINGTIME_41CYCLES_5);
-    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_VREFINT, LL_ADC_SAMPLINGTIME_239CYCLES_5);
-    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_TEMPSENSOR, LL_ADC_SAMPLINGTIME_239CYCLES_5);
-    
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_2, LL_ADC_SAMPLINGTIME_41CYCLES_5);
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_2, LL_ADC_SAMPLINGTIME_41CYCLES_5);    
   }
   
   
