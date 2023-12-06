@@ -1,2 +1,3 @@
 add_subdirectory(ADC_MultiChannelSingleConversion)
 add_subdirectory(ADC_SingleConversion_TriggerSW)
+add_subdirectory(ADC_MultiChannelSingleConversion_TimerTrigger)
