@@ -23,6 +23,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 #include "usbd_cdc_if.h"
+#include "arm_math.h"
+
+#include "circularbuffer_u32.h"
 
 /* Adc Stuff -----------------------------------------------------------------*/
 #define ADC_CALIBRATION_TIMEOUT_MS ((uint32_t)1)
@@ -47,10 +50,10 @@
 /* Definition of ADCx conversions data table size */
 /* Size of array set to ADC sequencer number of ranks converted,            */
 /* to have a rank in each array address.                                    */
-#define ADC_CONVERTED_DATA_BUFFER_SIZE ((uint32_t)3)
+#define ANALOG_CHANNELS 3
 
 /* Variables for ADC conversion data */
-__IO uint16_t aADCxConvertedData[ADC_CONVERTED_DATA_BUFFER_SIZE]; /* ADC group regular conversion data */
+__IO uint16_t aADCxConvertedData[ANALOG_CHANNELS]; /* ADC group regular conversion data */
 
 /* Variable to report status of DMA transfer of ADC group regular conversions */
 /*  0: DMA transfer is not completed                                          */
@@ -59,9 +62,9 @@ __IO uint16_t aADCxConvertedData[ADC_CONVERTED_DATA_BUFFER_SIZE]; /* ADC group r
 __IO uint8_t ubDmaTransferStatus = 2; /* Variable set into DMA interruption callback */
 
 /* Variables for ADC conversion data computation to physical values */
-__IO uint16_t uhADCxConvertedData_VoltageGPIO_mVolt = 0;       /* Value of voltage on GPIO pin (on which is mapped ADC channel) calculated from ADC conversion data (unit: mV) */
-__IO uint16_t uhADCxConvertedData_VrefInt_mVolt = 0;           /* Value of internal voltage reference VrefInt calculated from ADC conversion data (unit: mV) */
-__IO int16_t hADCxConvertedData_Temperature_DegreeCelsius = 0; /* Value of temperature calculated from ADC conversion data (unit: degree Celsius) */
+__IO uint16_t voltagePA4 = 0;       /* Value of voltage on GPIO pin (on which is mapped ADC channel) calculated from ADC conversion data (unit: mV) */
+__IO uint16_t voltagePA3 = 0;           /* Value of internal voltage reference VrefInt calculated from ADC conversion data (unit: mV) */
+__IO int16_t voltagePA2 = 0; /* Value of temperature calculated from ADC conversion data (unit: degree Celsius) */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -93,7 +96,7 @@ static uint32_t TimOutClock = 1;
 
 typedef enum state_enum
 {
-  STATE_MEDICION,
+  STATE_MEDICION = 1,
   STATE_MEDIA,
   STATE_ESTIMACION,
   STATE_TIEMPOREMANENTE,
@@ -104,6 +107,24 @@ typedef enum state_enum
 } state_enum;
 
 state_enum estado = STATE_MEDICION;
+
+#define MEDIANA_LENGTH 21
+
+float Vv1[MEDIANA_LENGTH] = {0};
+float Vv2[MEDIANA_LENGTH] = {0};
+float Ii[MEDIANA_LENGTH] = {0};
+
+
+#define CB_LENGTH2N 5
+static CircularBufferObject_t_u32 analogCircularBufferObjects[ANALOG_CHANNELS];
+uint32_t analogBuffer[ANALOG_CHANNELS][1 << CB_LENGTH2N] = {0};
+
+void initStructs(void);
+float median(float *v, int n);
+
+
+/***************************************************/
+
 /* Private user code ---------------------------------------------------------*/
 
 /**
@@ -120,6 +141,10 @@ int main(void)
 
   /* Configure the system clock */
   SystemClock_Config();
+
+  /* Logic Data Structures */
+  initStructs();
+
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
@@ -208,32 +233,36 @@ int main(void)
   /* Infinite loop */
   while (1)
   {
+    ubDmaTransferStatus = 0;
+
     while (ubDmaTransferStatus != 1)
     {
     }
 
     /* Computation of ADC conversions raw data to physical values             */
     /* using LL ADC driver helper macro.                                      */
-    uhADCxConvertedData_VoltageGPIO_mVolt = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[0], LL_ADC_RESOLUTION_12B);
-    uhADCxConvertedData_VrefInt_mVolt = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[1], LL_ADC_RESOLUTION_12B);
-    hADCxConvertedData_Temperature_DegreeCelsius = __LL_ADC_CALC_TEMPERATURE_TYP_PARAMS(INTERNAL_TEMPSENSOR_AVGSLOPE,
-                                                                                        INTERNAL_TEMPSENSOR_V25,
-                                                                                        INTERNAL_TEMPSENSOR_V25_TEMP,
-                                                                                        VDDA_APPLI,
-                                                                                        aADCxConvertedData[2],
-                                                                                        LL_ADC_RESOLUTION_12B);
+    voltagePA4 = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[0], LL_ADC_RESOLUTION_12B);
+    voltagePA3 = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[1], LL_ADC_RESOLUTION_12B);
+    voltagePA2 = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[2], LL_ADC_RESOLUTION_12B);
+
+    char txData[256];
+
+    sprintf(txData, "PA4: %d mV, PA3: %d mV, PA2: %d mV\r\n", voltagePA4, voltagePA3, voltagePA2);
+    int bytesToWrite = strlen(txData);
+
+    while (CDC_Transmit_FS((uint8_t *)txData, bytesToWrite) == USBD_BUSY);
 
     // Echo data
-    uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
-    if (bytesAvailable > 0)
-    {
-      uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
-      if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK)
-      {
-        while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY)
-          ;
-      }
-    }
+    // uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
+    // if (bytesAvailable > 0)
+    // {
+    //   uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
+    //   if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK)
+    //   {
+    //     while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY)
+    //       ;
+    //   }
+    // }
   }
 }
 
@@ -256,6 +285,7 @@ void LED_Blinking(uint32_t Period)
     HAL_Delay(Period);
   }
 }
+
 
 void Configure_TIMTimeBase(void)
 {
@@ -298,10 +328,6 @@ void Configure_TIMTimeBase(void)
 
   /* Force update generation */
   LL_TIM_GenerateEvent_UPDATE(TIM2);
-}
-
-void medicion()
-{
 }
 
 /**
@@ -352,11 +378,7 @@ void AdcDmaTransferComplete_Callback()
 {
   /* Update status variable of DMA transfer */
   ubDmaTransferStatus = 1;
-
-  /* Set LED depending on DMA transfer status */
-  /* - Turn-on if DMA transfer is completed */
-  /* - Turn-off if DMA transfer is not completed */
-  LED_On();
+  medicion();
 }
 
 /**
@@ -424,7 +446,7 @@ void Configure_DMA(void)
   /* Set DMA transfer size */
   LL_DMA_SetDataLength(DMA1,
                        LL_DMA_CHANNEL_1,
-                       ADC_CONVERTED_DATA_BUFFER_SIZE);
+                       ANALOG_CHANNELS);
 
   /* Enable DMA transfer interruption: transfer complete */
   LL_DMA_EnableIT_TC(DMA1,
@@ -441,9 +463,7 @@ void Configure_DMA(void)
 }
 
 void Configure_ADC(void)
-{
-  __IO uint32_t wait_loop_index = 0;
-
+{  
   /*## Configuration of GPIO used by ADC channels ############################*/
 
   /* Note: On this STM32 device, ADC1 channel 4 is mapped on GPIO pin PA.04 */
@@ -452,7 +472,9 @@ void Configure_ADC(void)
   LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_GPIOA);
 
   /* Configure GPIO in analog mode to be used as ADC input */
-  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_0, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_4, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_3, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_2, LL_GPIO_MODE_ANALOG);
 
   /*## Configuration of NVIC #################################################*/
   /* Configure NVIC to enable ADC1 interruptions */
@@ -482,24 +504,9 @@ void Configure_ADC(void)
     /*       setting corresponding to default configuration from reset state. */
 
     /* Set ADC measurement path to internal channels */
-    LL_ADC_SetCommonPathInternalCh(__LL_ADC_COMMON_INSTANCE(ADC1), (LL_ADC_PATH_INTERNAL_VREFINT | LL_ADC_PATH_INTERNAL_TEMPSENSOR));
+    LL_ADC_SetCommonPathInternalCh(__LL_ADC_COMMON_INSTANCE(ADC1), LL_ADC_PATH_INTERNAL_NONE);
 
-    /* Delay for ADC temperature sensor stabilization time.                   */
-    /* Compute number of CPU cycles to wait for, from delay in us.            */
-    /* Note: Variable divided by 2 to compensate partially                    */
-    /*       CPU processing cycles (depends on compilation optimization).     */
-    /* Note: If system core clock frequency is below 200kHz, wait time        */
-    /*       is only a few CPU processing cycles.                             */
-    /* Note: This delay is implemented here for the purpose in this example.  */
-    /*       It can be optimized if merged with other delays                  */
-    /*       during ADC activation or if other actions are performed          */
-    /*       in the meantime.                                                 */
-    wait_loop_index = ((LL_ADC_DELAY_TEMPSENSOR_STAB_US * (SystemCoreClock / (100000 * 2))) / 10);
-    while (wait_loop_index != 0)
-    {
-      wait_loop_index--;
-    }
-
+    
     /*## Configuration of ADC hierarchical scope: multimode ####################*/
 
     /* Set ADC multimode configuration */
@@ -557,7 +564,7 @@ void Configure_ADC(void)
     LL_ADC_REG_SetDMATransfer(ADC1, LL_ADC_REG_DMA_TRANSFER_UNLIMITED);
 
     /* Set ADC group regular sequencer */
-    /* Note: On this STM32 series, ADC group regular sequencer is              */
+    /* Note: On this STM32 series, ADC group regular sequencer is             */
     /*       fully configurable: sequencer length and each rank               */
     /*       affectation to a channel are configurable.                       */
     /*       Refer to description of function                                 */
@@ -571,8 +578,8 @@ void Configure_ADC(void)
 
     /* Set ADC group regular sequence: channel on the selected sequence rank. */
     LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_4);
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_VREFINT);
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_TEMPSENSOR);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_3);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_2);
   }
 
   /*## Configuration of ADC hierarchical scope: ADC group injected ###########*/
@@ -638,9 +645,9 @@ void Configure_ADC(void)
     /*       temperature sensor) constraints.                                 */
     /*       Refer to description of function                                 */
     /*       "LL_ADC_SetChannelSamplingTime()".                               */
-    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_4, LL_ADC_SAMPLINGTIME_41CYCLES_5);
-    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_VREFINT, LL_ADC_SAMPLINGTIME_239CYCLES_5);
-    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_TEMPSENSOR, LL_ADC_SAMPLINGTIME_239CYCLES_5);
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_4, LL_ADC_SAMPLINGTIME_239CYCLES_5);
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_3, LL_ADC_SAMPLINGTIME_239CYCLES_5);
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_2, LL_ADC_SAMPLINGTIME_239CYCLES_5);    
   }
 
   /*## Configuration of ADC transversal scope: analog watchdog ###############*/
@@ -762,6 +769,7 @@ void Error_Handler(void)
 void TimerUpdate_Callback(void)
 {
   HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+  LL_ADC_REG_StartConversionSWStart(ADC1);
   // LL_GPIO_TogglePin(LED2_GPIO_PORT, LED2_PIN);
 }
 
@@ -779,3 +787,75 @@ void assert_failed(uint8_t *file, uint32_t line)
      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
 }
 #endif /* USE_FULL_ASSERT */
+
+
+/***************************************************************/
+/* CODIGO PARA BMS *********************************************/
+
+
+
+inline float voltage_to_measurement(int voltage,float A, float B)
+{
+  return A*voltage + B;
+}
+
+float CH1_A = 1.0;
+float CH1_B = 0.0;
+
+float CH2_A = 1.0;
+float CH2_B = 0.0;
+
+float CH3_A = 1.0;
+float CH3_B = 0.0;
+
+int cm = 0;
+
+void medicion()
+{ 
+  for (int i = 0; i < ANALOG_CHANNELS; i++)
+  {
+    int chanVoltage = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[i], LL_ADC_RESOLUTION_12B);
+    CircularBuffer_pushBack_u32(&analogCircularBufferObjects[i], chanVoltage);
+  }
+}
+
+
+    // Vv1[cm] = voltage_to_measurement(voltageCH1,CH1_A,CH1_B);
+    // Vv2[cm] = voltage_to_measurement(voltageCH2,CH2_A,CH2_B);
+    // Ii[cm] = voltage_to_measurement(voltageCH3,CH3_A,CH3_B);
+
+    // cm++;
+
+    // if(cm == MEDIANA_LENGTH){
+    //   cm = 0;
+    //   float V1 = median(Vv1,MEDIANA_LENGTH);
+    //   float V2 = median(Vv2,MEDIANA_LENGTH);
+    //   float I = median(Ii,MEDIANA_LENGTH);    
+    // }
+
+void initStructs(){
+  for (int i = 0; i < ANALOG_CHANNELS; i++)
+  {
+    CircularBuffer_init_u32(&analogCircularBufferObjects[i], analogBuffer[i], CB_LENGTH2N);    
+  }
+}
+
+
+//function to calculate median of float vector using insertion sort
+float median(float *v, int n)
+{
+  int i, j;
+  float key;
+  for (i = 1; i < n; i++)
+  {
+    key = v[i];
+    j = i - 1;
+    while (j >= 0 && v[j] > key)
+    {
+      v[j + 1] = v[j];
+      j = j - 1;
+    }
+    v[j + 1] = key;
+  }
+  return v[n / 2];
+}

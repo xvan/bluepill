@@ -29,5 +29,5 @@ add_library(${USB_CDC_LIB} OBJECT ${CMAKE_SOURCE_DIR}/Middlewares/ST/STM32_USB_D
 FILE(GLOB_RECURSE PROJECT_SRC "Src/*.c")
 set(TARGET ${ProjectId})
 add_executable( ${ProjectId} ${PROJECT_SRC})
-target_link_libraries(${ProjectId} STARTUP ${DRIVERS_HAL_LIB} ${USB_DEVICE_LIB} ${USB_CDC_LIB})
+target_link_libraries(${ProjectId} STARTUP CCIRCUS ${DRIVERS_HAL_LIB} ${USB_DEVICE_LIB} ${USB_CDC_LIB})
 

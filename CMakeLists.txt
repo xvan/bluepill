@@ -26,7 +26,7 @@ include(stm32fx)
 project(GPIO_InfiniteLedToggling C ASM)
 
 #add_definitions(-Dprintf=iprintf -DDEBUG)
-add_definitions(-DSTM32F103xB -DUSE_FULL_LL_DRIVER)
+add_definitions(-DSTM32F103xB -DUSE_FULL_LL_DRIVER -DARM_MATH_CM3)
 
 include_directories(
 Drivers/BSP/Adafruit_Shield
@@ -56,6 +56,12 @@ Drivers/CMSIS/RTOS2/Template
 Drivers/CMSIS/RTOS/Template
 Drivers/STM32F1xx_HAL_Driver/Inc
 #Drivers/STM32F1xx_HAL_Driver/Inc/Legacy
+Middlewares/Third_Party/c-circus
+)
+
+add_library(CCIRCUS OBJECT 
+"Middlewares/Third_Party/c-circus/circularbuffer_u32.c"
+"Middlewares/Third_Party/c-circus/circularbuffer_u8.c"
 )
 
 add_library(STARTUP OBJECT ${STARTUP_ASSEMBLY})

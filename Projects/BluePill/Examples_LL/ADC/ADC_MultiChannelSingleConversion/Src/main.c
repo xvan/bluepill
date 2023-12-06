@@ -87,7 +87,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* Variables for ADC conversion data */
-__IO uint16_t aADCxConvertedData[ADC_CONVERTED_DATA_BUFFER_SIZE]; /* ADC group regular conversion data */
+__IO uint16_t aADCxConvertedData[ANALOG_CHANNELS]; /* ADC group regular conversion data */
 
 /* Variable to report status of DMA transfer of ADC group regular conversions */
 /*  0: DMA transfer is not completed                                          */
@@ -97,9 +97,9 @@ __IO uint8_t ubDmaTransferStatus = 2; /* Variable set into DMA interruption call
 
 
 /* Variables for ADC conversion data computation to physical values */
-__IO uint16_t uhADCxConvertedData_VoltageGPIO_mVolt = 0;        /* Value of voltage on GPIO pin (on which is mapped ADC channel) calculated from ADC conversion data (unit: mV) */
-__IO uint16_t uhADCxConvertedData_VrefInt_mVolt = 0;            /* Value of internal voltage reference VrefInt calculated from ADC conversion data (unit: mV) */
-__IO  int16_t hADCxConvertedData_Temperature_DegreeCelsius = 0; /* Value of temperature calculated from ADC conversion data (unit: degree Celsius) */
+__IO uint16_t voltagePA4 = 0;        /* Value of voltage on GPIO pin (on which is mapped ADC channel) calculated from ADC conversion data (unit: mV) */
+__IO uint16_t voltagePA3 = 0;            /* Value of internal voltage reference VrefInt calculated from ADC conversion data (unit: mV) */
+__IO  int16_t voltagePA2 = 0; /* Value of temperature calculated from ADC conversion data (unit: degree Celsius) */
 
 /* Private function prototypes -----------------------------------------------*/
 void     SystemClock_Config(void);
@@ -177,9 +177,9 @@ int main(void)
     
     /* Computation of ADC conversions raw data to physical values             */
     /* using LL ADC driver helper macro.                                      */
-    uhADCxConvertedData_VoltageGPIO_mVolt        = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[0], LL_ADC_RESOLUTION_12B);
-    uhADCxConvertedData_VrefInt_mVolt            = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[1], LL_ADC_RESOLUTION_12B);
-    hADCxConvertedData_Temperature_DegreeCelsius = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[2], LL_ADC_RESOLUTION_12B);
+    voltagePA4        = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[0], LL_ADC_RESOLUTION_12B);
+    voltagePA3            = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[1], LL_ADC_RESOLUTION_12B);
+    voltagePA2 = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[2], LL_ADC_RESOLUTION_12B);
     
     /* Wait for a new ADC conversion and DMA transfer */
     while(ubDmaTransferStatus != 0)
@@ -234,7 +234,7 @@ void Configure_DMA(void)
   /* Set DMA transfer size */
   LL_DMA_SetDataLength(DMA1,
                          LL_DMA_CHANNEL_1,
-                       ADC_CONVERTED_DATA_BUFFER_SIZE);
+                       ANALOG_CHANNELS);
   
   /* Enable DMA transfer interruption: transfer complete */
   LL_DMA_EnableIT_TC(DMA1,

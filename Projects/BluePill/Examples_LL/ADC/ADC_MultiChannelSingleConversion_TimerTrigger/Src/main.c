@@ -87,7 +87,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* Variables for ADC conversion data */
-__IO uint16_t aADCxConvertedData[ADC_CONVERTED_DATA_BUFFER_SIZE]; /* ADC group regular conversion data */
+__IO uint16_t aADCxConvertedData[ANALOG_CHANNELS]; /* ADC group regular conversion data */
 
 /* Variable to report status of DMA transfer of ADC group regular conversions */
 /*  0: DMA transfer is not completed                                          */
@@ -293,7 +293,7 @@ void Configure_DMA(void)
   /* Set DMA transfer size */
   LL_DMA_SetDataLength(DMA1,
                          LL_DMA_CHANNEL_1,
-                       ADC_CONVERTED_DATA_BUFFER_SIZE);
+                       ANALOG_CHANNELS);
   
   /* Enable DMA transfer interruption: transfer complete */
   LL_DMA_EnableIT_TC(DMA1,
