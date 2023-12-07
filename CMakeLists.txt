@@ -64,6 +64,11 @@ add_library(CCIRCUS OBJECT
 "Middlewares/Third_Party/c-circus/circularbuffer_u8.c"
 )
 
+
+FILE(GLOB_RECURSE CMSIS_DSP_SRC "${CMAKE_SOURCE_DIR}/Drivers/CMSIS/DSP/Source/*/*.c")
+add_library(CMSIS_DSP OBJECT ${CMSIS_DSP_SRC})
+target_include_directories(CMSIS_DSP PUBLIC "${CMAKE_SOURCE_DIR}/Drivers/CMSIS/DSP/Include")
+
 add_library(STARTUP OBJECT ${STARTUP_ASSEMBLY})
 
 add_library(DRIVERS OBJECT 

@@ -69,7 +69,7 @@ __IO int16_t voltagePA2 = 0; /* Value of temperature calculated from ADC convers
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-void medicion(void);
+void adquisicion(void);
 void Configure_TIMTimeBase(void);
 
 void LED_On(void);
@@ -91,9 +91,6 @@ void Activate_ADC(void);
 /* Initial autoreload value */
 static uint32_t InitialAutoreload = 0;
 
-/* TIM2 Clock */
-static uint32_t TimOutClock = 1;
-
 typedef enum state_enum
 {
   STATE_MEDICION = 1,
@@ -108,12 +105,19 @@ typedef enum state_enum
 
 state_enum estado = STATE_MEDICION;
 
-#define MEDIANA_LENGTH 21
+#define MEDIAN_LENGTH 21
+#define MEAN_LENGTH 10
+#define SAMPLE_RATE (MEAN_LENGTH * MEDIAN_LENGTH)
 
-float Vv1[MEDIANA_LENGTH] = {0};
-float Vv2[MEDIANA_LENGTH] = {0};
-float Ii[MEDIANA_LENGTH] = {0};
+u_int32_t median_counter = 0;
+u_int32_t mean_counter = 0;
 
+float ChanMedian[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
+float ChanMean[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
+
+//Coeficinetes de escala para cada canal: V = A*Vv + B
+float A_Coef[ANALOG_CHANNELS] = {1.0, 1.0, 1.0};
+float B_Coef[ANALOG_CHANNELS] = {0.0, 0.0, 0.0};
 
 #define CB_LENGTH2N 5
 static CircularBufferObject_t_u32 analogCircularBufferObjects[ANALOG_CHANNELS];
@@ -121,6 +125,7 @@ uint32_t analogBuffer[ANALOG_CHANNELS][1 << CB_LENGTH2N] = {0};
 
 void initStructs(void);
 float median(float *v, int n);
+inline float voltage_to_measurement(int, float, float);
 
 
 /***************************************************/
@@ -165,106 +170,84 @@ int main(void)
 
   Configure_TIMTimeBase();
 
-  /* Infinite loop */
-  // while (1)
-  // {
-  //   switch (estado)
-  //   {//complete with all cases
-  //     case STATE_MEDICION:
-  //       //adquiere continuamente la tension y corriente. c/21 muestras calcula la mediana
-  //       medicion();
-  //       break;
-  //     case STATE_MEDIA:
-  //       // promedio de las medianas
-  //       break;
-  //     case STATE_ESTIMACION:
-  //       // filtro de kalman
-  //       break;
-  //     case STATE_TIEMPOREMANENTE:
-  //       // calculo de tiempo remanente (ahora esta sin uso)
-  //       break;
-  //     case STATE_DATALOG:
-  //       // guarda en la SD
-  //       break;
-  //     case STATE_REPOSO:
-  //       // estima el soc y x con la EMF inversa
-  //       break;
-  //     case STATE_ZONASEGURA:
-  //       // verifica que los valores adquiridos esten dentro de los limites seguros
-  //       break;
-  //     case STATE_ALARMA:
-  //       // activa los pines que activaran la llave de corte
-  //       break;
-  //     default:
-  //       //Standby
-  //       break;
-  //   }
+  while(1){
+    
+    /* DATA AQUISITION *****************************************************/
+    if( CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) == 0 )
+      continue;
 
-  // switch (estado) {
-  //  case 1:
-  //    medicion(); //adquiere continuamente la tension y corriente. c/21 muestras calcula la mediana
-  //    break;
-  //  case 2:
-  //    media();  // promedio de las medianas
-  //    break;
-  //  case 3:
-  //    estimacion(); // filtro de kalman
-  //    break;
-  //  case 4:
-  //    TiempoRemanente(); // calculo de tiempo remanente (ahora esta sin uso)
-  //    break;
-  //  case 5:
-  //    datalog(); // guarda en la SD
-  //    break;
-  //  case 6:
-  //    reposo(); // estima el soc y x con la EMF inversa
-  //    break;
-  //  case 7:
-  //    ZonaSegura(); // verifica que los valores adquiridos esten dentro de los limites seguros
-  //    break;
-  //  case 8:
-  //    Alarma();  // activa los pines que activaran la llave de corte
-  //    break;
-  // default:
-  // Standby
-  //  break;
-  //}
-
-  /* Infinite loop */
-  while (1)
-  {
-    ubDmaTransferStatus = 0;
-
-    while (ubDmaTransferStatus != 1)
-    {
+    for (int i = 0; i < ANALOG_CHANNELS; i++)
+    {      
+      uint32_t aux_voltage;
+      CircularBuffer_popFront_u32(&analogCircularBufferObjects[i], &aux_voltage);       
+      ChanMedian[i][median_counter] = voltage_to_measurement(aux_voltage, A_Coef[i], B_Coef[i]);
     }
+    median_counter++;
 
-    /* Computation of ADC conversions raw data to physical values             */
-    /* using LL ADC driver helper macro.                                      */
-    voltagePA4 = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[0], LL_ADC_RESOLUTION_12B);
-    voltagePA3 = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[1], LL_ADC_RESOLUTION_12B);
-    voltagePA2 = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[2], LL_ADC_RESOLUTION_12B);
+    /* MEDIAN CALCULATION *******************************************************/
+
+    if (median_counter != MEDIAN_LENGTH) 
+      continue;
+    
+    median_counter = 0;
+    for (int i = 0; i < ANALOG_CHANNELS; i++)
+    {
+      ChanMean[i][mean_counter] = median(ChanMedian[i], MEDIAN_LENGTH);        
+    }
+    mean_counter++;
+      
+    if (mean_counter != MEAN_LENGTH)
+      continue;      
+    
+    /* MEAN CALCULATION *********************************************************/
+    mean_counter = 0;
+    float32_t aux_mean[ANALOG_CHANNELS];
+    for (int i = 0; i < ANALOG_CHANNELS; i++)
+    {      
+      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &aux_mean[i]);
+    }      
 
     char txData[256];
-
-    sprintf(txData, "PA4: %d mV, PA3: %d mV, PA2: %d mV\r\n", voltagePA4, voltagePA3, voltagePA2);
+    sprintf(txData, "PA4: %f mV, PA3: %f mV, PA2: %f mV\r\n", aux_mean[0], aux_mean[1], aux_mean[2]);
     int bytesToWrite = strlen(txData);
 
     while (CDC_Transmit_FS((uint8_t *)txData, bytesToWrite) == USBD_BUSY);
-
-    // Echo data
-    // uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
-    // if (bytesAvailable > 0)
-    // {
-    //   uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
-    //   if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK)
-    //   {
-    //     while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY)
-    //       ;
-    //   }
-    // }
   }
 }
+
+  // while (1)
+  // {
+  //   ubDmaTransferStatus = 0;
+
+  //   while (ubDmaTransferStatus != 1)
+  //   {
+  //   }
+
+  //   /* Computation of ADC conversions raw data to physical values             */
+  //   /* using LL ADC driver helper macro.                                      */
+  //   voltagePA4 = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[0], LL_ADC_RESOLUTION_12B);
+  //   voltagePA3 = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[1], LL_ADC_RESOLUTION_12B);
+  //   voltagePA2 = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[2], LL_ADC_RESOLUTION_12B);
+
+  //   char txData[256];
+
+  //   sprintf(txData, "PA4: %d mV, PA3: %d mV, PA2: %d mV\r\n", voltagePA4, voltagePA3, voltagePA2);
+  //   int bytesToWrite = strlen(txData);
+
+  //   while (CDC_Transmit_FS((uint8_t *)txData, bytesToWrite) == USBD_BUSY);
+
+  //   // Echo data
+  //   // uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
+  //   // if (bytesAvailable > 0)
+  //   // {
+  //   //   uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
+  //   //   if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK)
+  //   //   {
+  //   //     while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY)
+  //   //       ;
+  //   //   }
+  //   // }
+  // }
 
 void LED_On(void)
 {
@@ -311,9 +294,9 @@ void Configure_TIMTimeBase(void)
 
   /* Set the auto-reload value to have an initial update event frequency of 10 Hz */
   /* TIM2CLK = SystemCoreClock / (APB prescaler & multiplier)                 */
-  TimOutClock = SystemCoreClock / 2;
+  uint32_t TimOutClock = SystemCoreClock / 2;
 
-  InitialAutoreload = __LL_TIM_CALC_ARR(TimOutClock, LL_TIM_GetPrescaler(TIM2), 10);
+  InitialAutoreload = __LL_TIM_CALC_ARR(SystemCoreClock, LL_TIM_GetPrescaler(TIM2), SAMPLE_RATE);
   LL_TIM_SetAutoReload(TIM2, InitialAutoreload);
 
   /* Enable the update interrupt */
@@ -378,7 +361,7 @@ void AdcDmaTransferComplete_Callback()
 {
   /* Update status variable of DMA transfer */
   ubDmaTransferStatus = 1;
-  medicion();
+  adquisicion();
 }
 
 /**
@@ -799,18 +782,10 @@ inline float voltage_to_measurement(int voltage,float A, float B)
   return A*voltage + B;
 }
 
-float CH1_A = 1.0;
-float CH1_B = 0.0;
 
-float CH2_A = 1.0;
-float CH2_B = 0.0;
 
-float CH3_A = 1.0;
-float CH3_B = 0.0;
 
-int cm = 0;
-
-void medicion()
+void adquisicion()
 { 
   for (int i = 0; i < ANALOG_CHANNELS; i++)
   {
@@ -826,11 +801,11 @@ void medicion()
 
     // cm++;
 
-    // if(cm == MEDIANA_LENGTH){
+    // if(cm == MEDIAN_LENGTH){
     //   cm = 0;
-    //   float V1 = median(Vv1,MEDIANA_LENGTH);
-    //   float V2 = median(Vv2,MEDIANA_LENGTH);
-    //   float I = median(Ii,MEDIANA_LENGTH);    
+    //   float V1 = median(Vv1,MEDIAN_LENGTH);
+    //   float V2 = median(Vv2,MEDIAN_LENGTH);
+    //   float I = median(Ii,MEDIAN_LENGTH);    
     // }
 
 void initStructs(){
@@ -859,3 +834,5 @@ float median(float *v, int n)
   }
   return v[n / 2];
 }
+
+
