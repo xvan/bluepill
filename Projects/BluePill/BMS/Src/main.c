@@ -26,6 +26,7 @@
 #include "arm_math.h"
 
 #include "circularbuffer_u32.h"
+#include "math_functions.h"
 
 /* Adc Stuff -----------------------------------------------------------------*/
 #define ADC_CALIBRATION_TIMEOUT_MS ((uint32_t)1)
@@ -124,9 +125,9 @@ static CircularBufferObject_t_u32 analogCircularBufferObjects[ANALOG_CHANNELS];
 uint32_t analogBuffer[ANALOG_CHANNELS][1 << CB_LENGTH2N] = {0};
 
 void initStructs(void);
-float median(float *v, int n);
 inline float voltage_to_measurement(int, float, float);
-
+void estimacion(void);
+void initialize_matrix(void);
 
 /***************************************************/
 
@@ -149,7 +150,7 @@ int main(void)
 
   /* Logic Data Structures */
   initStructs();
-
+  initialize_matrix();
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
@@ -212,6 +213,8 @@ int main(void)
     int bytesToWrite = strlen(txData);
 
     while (CDC_Transmit_FS((uint8_t *)txData, bytesToWrite) == USBD_BUSY);
+
+    estimacion();
   }
 }
 
@@ -816,23 +819,183 @@ void initStructs(){
 }
 
 
-//function to calculate median of float vector using insertion sort
-float median(float *v, int n)
+/* MATRIX CONSTANTS */
+
+const float h = 0.0002778; //depende de la velocidad de la interrupcion de la medicion
+
+const float a1 = 1.859;
+const float p1 = 0.446;
+const float r1 = 0.0233; //  modificado el 7/11  p/probar la r segun la tabla. Para eso se define la r como float (igual que Ve)
+const float Q1 = 7.2;
+const float expo1 = 0.99987; //exp(-h / p)
+
+const float a2 = 1.859;
+const float p2 = 0.446;
+const float r2 = 0.0233; //  modificado el 7/11  p/probar la r segun la tabla. Para eso se define la r como float (igual que Ve)
+const float Q2 = 7.2;
+const float expo2 = 0.99987; //exp(-h / p)
+
+/* MATRIX BUFFERS */
+
+#define MATRIX_DIM 4
+
+/*size 4 x 4*/
+float32_t Pb_f32[MATRIX_DIM * MATRIX_DIM] =
 {
-  int i, j;
-  float key;
-  for (i = 1; i < n; i++)
-  {
-    key = v[i];
-    j = i - 1;
-    while (j >= 0 && v[j] > key)
-    {
-      v[j + 1] = v[j];
-      j = j - 1;
-    }
-    v[j + 1] = key;
-  }
-  return v[n / 2];
+1.0, 0.0, 0.0, 0.0, 
+0.0, 1.0, 0.0, 0.0, 
+0.0, 0.0, 1.0, 0.0, 
+0.0, 0.0, 0.0 ,1.0
+};
+
+/*size 4 x 4*/
+float32_t Pk_f32[MATRIX_DIM * MATRIX_DIM] =
+{
+1.0, 0.0, 0.0, 0.0, 
+0.0, 1.0, 0.0, 0.0, 
+0.0, 0.0, 1.0, 0.0, 
+0.0, 0.0, 0.0 ,1.0
+};
+
+/*size 4 x 4*/
+float32_t R1_f32[MATRIX_DIM * MATRIX_DIM] =
+{
+0.1, 0.0, 0.0, 0.0, 
+0.0, 1.0, 0.0, 0.0, 
+0.0, 0.0, 0.1, 0.0, 
+0.0, 0.0, 0.0 ,1.0
+};
+
+/*size 2 x 4*/
+float32_t C_f32[2 * MATRIX_DIM] =
+{
+0.0, 0.0, 0.0, 0.0, 
+0.0, 0.0, 0.0, 0.0   
+};
+
+/*size 4 x 4*/
+float32_t A_f32[MATRIX_DIM * MATRIX_DIM] = 
+{
+        1.0,   0.0,       0.0,   0.0, 
+1.0 - expo1, expo1,       0.0,   0.0, 
+        0.0,   0.0,       1.0,   0.0, 
+        0.0,   0.0, 1 - expo2, expo2
+};
+
+/*size 4 x 1*/
+float32_t B_f32[MATRIX_DIM * 1] = 
+{ 
+                               h / Q1, 
+  -((p1 - a1) * (1 - expo1) - h) / Q1, 
+                               h / Q2, 
+  -((p2 - a2) * (1 - expo2) - h) / Q2
+}; //I negativa en la descarga
+
+/*size 4 x 2*/
+float32_t K_f32[MATRIX_DIM * 2] = {0};
+/*size 4 x 1*/
+float32_t Xe_f32[MATRIX_DIM * 1] = {0};
+/*size 4 x 1*/
+float32_t Xb_f32[MATRIX_DIM * 1] = {0};
+/*size 4 x 1*/
+float32_t ye_f32[MATRIX_DIM * 1] = {0};
+/*size 4 x 1*/
+float32_t y_f32[MATRIX_DIM * 1] = {0};
+
+arm_matrix_instance_f32 Pb;
+arm_matrix_instance_f32 Pk;
+arm_matrix_instance_f32 R1;
+arm_matrix_instance_f32 C;
+arm_matrix_instance_f32 A;
+arm_matrix_instance_f32 B;
+arm_matrix_instance_f32 K;
+arm_matrix_instance_f32 Xe;
+arm_matrix_instance_f32 Xb;
+arm_matrix_instance_f32 ye;
+arm_matrix_instance_f32 y;
+
+void initialize_matrix(){  
+    arm_mat_init_f32(&Pb, MATRIX_DIM, MATRIX_DIM, (float32_t *)Pb_f32);
+    arm_mat_init_f32(&Pk, MATRIX_DIM, MATRIX_DIM, (float32_t *)Pk_f32);
+    arm_mat_init_f32(&R1, MATRIX_DIM, MATRIX_DIM, (float32_t *)R1_f32);
+    arm_mat_init_f32(&C, 2, MATRIX_DIM, (float32_t *)C_f32);
+    arm_mat_init_f32(&A, MATRIX_DIM, MATRIX_DIM, (float32_t *)A_f32);
+    arm_mat_init_f32(&B, MATRIX_DIM, 1, (float32_t *)B_f32);
+    arm_mat_init_f32(&K, MATRIX_DIM, 2, (float32_t *)K_f32);
+    arm_mat_init_f32(&Xe, MATRIX_DIM, 1, (float32_t *)Xe_f32);
+    arm_mat_init_f32(&Xb, MATRIX_DIM, 1, (float32_t *)Xb_f32);
+    arm_mat_init_f32(&ye, MATRIX_DIM, 1, (float32_t *)ye_f32);
+    arm_mat_init_f32(&y, MATRIX_DIM, 1, (float32_t *)y_f32);    
 }
 
+#define OCV_length 13
 
+// TABLAS //
+float32_t Charge[OCV_length] = {0.0093, 0.0848, 0.168, 0.2512, 0.3344, 0.4176, 0.5008, 0.584, 0.6672, 0.7504, 0.8336, 0.9168, 1};
+
+float32_t OCV1[OCV_length] = {2.92, 3.2, 3.221, 3.253, 3.277, 3.283, 3.285, 3.288, 3.298, 3.321, 3.322, 3.324, 3.374};
+float32_t Req1[OCV_length] = {0.16, 0.089, 0.092, 0.081, 0.071, 0.066, 0.062, 0.059, 0.061, 0.06, 0.058, 0.059, 0.099};
+
+float32_t OCV2[OCV_length] = {2.92, 3.2, 3.221, 3.253, 3.277, 3.283, 3.285, 3.288, 3.298, 3.321, 3.322, 3.324, 3.374};
+float32_t Req2[OCV_length] = {0.16, 0.089, 0.092, 0.081, 0.071, 0.066, 0.062, 0.059, 0.061, 0.06, 0.058, 0.059, 0.099};
+
+
+void estimacion(){}
+// void estimacion() {
+
+// //************  SOC A LAZO ABIERTO (7/11)
+//  //dq=h*I/Q1;
+//  //soc=soc+dq;
+// //************ 
+
+
+//   //Linealiza:
+//   //df=interp1(Dfq(:,1),Dfq(:,2),Xb(2),'spline','extrap');
+
+//   float32_t X1 = Xb.pData[0];
+//   float32_t X2 = Xb.pData[2];
+ 
+  
+//   //float  W[]={0.0000, 0.0196, 0.0385, 0.0567, 0.0743, 0.0913, 0.1077, 0.1237, 0.1392, 0.1543, 0.1689, 0.1832, 0.1971, 0.2106, 0.2238, 0.2368, 0.2494, 0.2617, 0.2738, 0.2856, 0.2972, 0.3085, 0.3196, 0.3305, 0.3412, 0.3517, 0.3620, 0.3722, 0.3821, 0.3919, 0.4016, 0.4110, 0.4204, 0.4295, 0.4386, 0.4475, 0.4562, 0.4649, 0.4734, 0.4818, 0.4901, 0.4982, 0.5063, 0.5142, 0.5221, 0.5298, 0.5375, 0.5450, 0.5525, 0.5599, 0.5671};
+//   df1 = Interpolation::ConstrainedSpline(Charge, DfQ1, OCV_length, X1);
+//   df2 = Interpolation::ConstrainedSpline(Charge, DfQ1, OCV_length, X2);
+//   C = {0, df1, 0, 0, 0, 0, 0, df2};
+
+//   //Kalman:
+//   //K = Pb * C'/(1+C*Pb*C');
+//   K = (Pb * (~C)) / (1 + (C * (Pb * (~C)))(0, 0));
+
+//   //Ve=interp1(EMF(:,2),EMF(:,1),Xb(2),'spline','extrap')-I*r;
+//   //r = Interpolation::ConstrainedSpline(Charge, Req, OCV_length, Xb1);// agregado el 7/11 p/usar la R segun la tabla que relaciona la Req con el soc
+  
+//   Ve1 = Interpolation::ConstrainedSpline(Charge, OCV1, OCV_length, X1) + I * r1;
+//   Ve2 = Interpolation::ConstrainedSpline(Charge, OCV2, OCV_length, X2) + I * r2;
+  
+//   ye = {Ve1, Ve2};
+//   y = {V1, V2};
+  
+//   //Xe=Xb+K*(V-Ve);
+//   Xe = Xb + K * (y - ye);
+
+//   //Pk = inv(inv(Pb) + C'*C);
+//   auto Pb_inv = Pb;
+//   Invert(Pb_inv);
+//   Pk = Pb_inv + ((~C) * C);
+//   Invert(Pk);
+
+//   //Xb=A*Xe+B*I;
+//   Xb = (A * Xe) + ( B * I );
+
+//   //Pb=A*Pk*A' + R1;
+//   Pb = ((A * Pk) * (~A)) + R1;
+
+//   if (Xb(0) < 0) Xb(0) = 0;
+//   if (Xb(0) > 1) Xb(0) = 1;
+//   if (Xb(1) < 0) Xb(1) = 0;
+//   if (Xb(1) > 1) Xb(1) = 1;
+//   if (Xb(2) < 0) Xb(2) = 0;
+//   if (Xb(2) > 1) Xb(2) = 1;
+//   if (Xb(3) < 0) Xb(3) = 0;
+//   if (Xb(3) > 1) Xb(3) = 1;
+//  estado = 4; //TiempoRemanente
+// }
