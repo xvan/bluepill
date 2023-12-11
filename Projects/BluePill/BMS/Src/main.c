@@ -126,8 +126,11 @@ uint32_t analogBuffer[ANALOG_CHANNELS][1 << CB_LENGTH2N] = {0};
 
 void initStructs(void);
 inline float voltage_to_measurement(int, float, float);
-void estimacion(void);
-void initialize_matrix(void);
+void estimacion(float32_t, float32_t, float32_t);
+void initialize_calculate(void);
+void calculate_K(void);
+void calculate_Xe(void);
+void calculate_Pk(void);
 
 /***************************************************/
 
@@ -150,7 +153,8 @@ int main(void)
 
   /* Logic Data Structures */
   initStructs();
-  initialize_matrix();
+  
+  initialize_calculate();
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
@@ -193,7 +197,7 @@ int main(void)
     median_counter = 0;
     for (int i = 0; i < ANALOG_CHANNELS; i++)
     {
-      ChanMean[i][mean_counter] = median(ChanMedian[i], MEDIAN_LENGTH);        
+      ChanMean[i][mean_counter] = median(ChanMedian[i], MEDIAN_LENGTH);
     }
     mean_counter++;
       
@@ -214,7 +218,13 @@ int main(void)
 
     while (CDC_Transmit_FS((uint8_t *)txData, bytesToWrite) == USBD_BUSY);
 
-    estimacion();
+
+    /* CURRENT VALUES */
+    float32_t V1 = aux_mean[0];
+    float32_t V2 = aux_mean[1]-aux_mean[0];
+    float32_t I = aux_mean[3];
+    
+    estimacion(V1, V2, I);
   }
 }
 
@@ -914,22 +924,7 @@ arm_matrix_instance_f32 Xb;
 arm_matrix_instance_f32 ye;
 arm_matrix_instance_f32 y;
 
-void initialize_matrix(){  
-    arm_mat_init_f32(&Pb, MATRIX_DIM, MATRIX_DIM, (float32_t *)Pb_f32);
-    arm_mat_init_f32(&Pk, MATRIX_DIM, MATRIX_DIM, (float32_t *)Pk_f32);
-    arm_mat_init_f32(&R1, MATRIX_DIM, MATRIX_DIM, (float32_t *)R1_f32);
-    arm_mat_init_f32(&C, 2, MATRIX_DIM, (float32_t *)C_f32);
-    arm_mat_init_f32(&A, MATRIX_DIM, MATRIX_DIM, (float32_t *)A_f32);
-    arm_mat_init_f32(&B, MATRIX_DIM, 1, (float32_t *)B_f32);
-    arm_mat_init_f32(&K, MATRIX_DIM, 2, (float32_t *)K_f32);
-    arm_mat_init_f32(&Xe, MATRIX_DIM, 1, (float32_t *)Xe_f32);
-    arm_mat_init_f32(&Xb, MATRIX_DIM, 1, (float32_t *)Xb_f32);
-    arm_mat_init_f32(&ye, MATRIX_DIM, 1, (float32_t *)ye_f32);
-    arm_mat_init_f32(&y, MATRIX_DIM, 1, (float32_t *)y_f32);    
-}
-
 #define OCV_length 13
-
 // TABLAS //
 float32_t Charge[OCV_length] = {0.0093, 0.0848, 0.168, 0.2512, 0.3344, 0.4176, 0.5008, 0.584, 0.6672, 0.7504, 0.8336, 0.9168, 1};
 
@@ -940,48 +935,65 @@ float32_t OCV2[OCV_length] = {2.92, 3.2, 3.221, 3.253, 3.277, 3.283, 3.285, 3.28
 float32_t Req2[OCV_length] = {0.16, 0.089, 0.092, 0.081, 0.071, 0.066, 0.062, 0.059, 0.061, 0.06, 0.058, 0.059, 0.099};
 
 
-void estimacion(){}
-// void estimacion() {
+float32_t DfQ1[OCV_length];
+float32_t DfQ2[OCV_length];
 
-// //************  SOC A LAZO ABIERTO (7/11)
-//  //dq=h*I/Q1;
-//  //soc=soc+dq;
-// //************ 
+void initialize_calculate(){  
+    arm_mat_init_f32(&Pb, MATRIX_DIM, MATRIX_DIM, (float32_t *)Pb_f32);
+    arm_mat_init_f32(&Pk, MATRIX_DIM, MATRIX_DIM, (float32_t *)Pk_f32);
+    arm_mat_init_f32(&R1, MATRIX_DIM, MATRIX_DIM, (float32_t *)R1_f32);
+    arm_mat_init_f32(&C, 2, MATRIX_DIM, (float32_t *)C_f32);    
+    arm_mat_init_f32(&A, MATRIX_DIM, MATRIX_DIM, (float32_t *)A_f32);
+    arm_mat_init_f32(&B, MATRIX_DIM, 1, (float32_t *)B_f32);
+    arm_mat_init_f32(&K, MATRIX_DIM, 2, (float32_t *)K_f32);
+    arm_mat_init_f32(&Xe, MATRIX_DIM, 1, (float32_t *)Xe_f32);
+    arm_mat_init_f32(&Xb, MATRIX_DIM, 1, (float32_t *)Xb_f32);
+    arm_mat_init_f32(&ye, MATRIX_DIM, 1, (float32_t *)ye_f32);
+    arm_mat_init_f32(&y, MATRIX_DIM, 1, (float32_t *)y_f32);
+        
+    // CALCULO DFQ //
+    for (int i = 0; i < OCV_length - 1; i++) {
+      DfQ1[i] = (OCV1[i + 1] - OCV1[i]) / (Charge[i + 1] - Charge[i]);
+      DfQ2[i] = (OCV2[i + 1] - OCV2[i]) / (Charge[i + 1] - Charge[i]);
+    }
+    DfQ1[OCV_length - 1] = DfQ1[OCV_length - 2];
+    DfQ2[OCV_length - 1] = DfQ2[OCV_length - 2];      
+}
+
+//void estimacion(){}
+void estimacion(float32_t V1, float32_t V2, float32_t I) {
+
+//************  SOC A LAZO ABIERTO (7/11)
+ //dq=h*I/Q1;
+ //soc=soc+dq;
+//************ 
 
 
-//   //Linealiza:
-//   //df=interp1(Dfq(:,1),Dfq(:,2),Xb(2),'spline','extrap');
+  //Linealiza:
+  //df=interp1(Dfq(:,1),Dfq(:,2),Xb(2),'spline','extrap');
 
-//   float32_t X1 = Xb.pData[0];
-//   float32_t X2 = Xb.pData[2];
- 
+  float32_t X1 = Xb.pData[0];
+  float32_t X2 = Xb.pData[2];
+
+
+  C.pData[1] = Interpolation_ConstrainedSpline(Charge, DfQ1, OCV_length, X1, true);
+  C.pData[7] = Interpolation_ConstrainedSpline(Charge, DfQ1, OCV_length, X2, true);   
+
+  //K = Pb * C'/(1+C*Pb*C');
+  calculate_K();
   
-//   //float  W[]={0.0000, 0.0196, 0.0385, 0.0567, 0.0743, 0.0913, 0.1077, 0.1237, 0.1392, 0.1543, 0.1689, 0.1832, 0.1971, 0.2106, 0.2238, 0.2368, 0.2494, 0.2617, 0.2738, 0.2856, 0.2972, 0.3085, 0.3196, 0.3305, 0.3412, 0.3517, 0.3620, 0.3722, 0.3821, 0.3919, 0.4016, 0.4110, 0.4204, 0.4295, 0.4386, 0.4475, 0.4562, 0.4649, 0.4734, 0.4818, 0.4901, 0.4982, 0.5063, 0.5142, 0.5221, 0.5298, 0.5375, 0.5450, 0.5525, 0.5599, 0.5671};
-//   df1 = Interpolation::ConstrainedSpline(Charge, DfQ1, OCV_length, X1);
-//   df2 = Interpolation::ConstrainedSpline(Charge, DfQ1, OCV_length, X2);
-//   C = {0, df1, 0, 0, 0, 0, 0, df2};
-
-//   //Kalman:
-//   //K = Pb * C'/(1+C*Pb*C');
-//   K = (Pb * (~C)) / (1 + (C * (Pb * (~C)))(0, 0));
-
-//   //Ve=interp1(EMF(:,2),EMF(:,1),Xb(2),'spline','extrap')-I*r;
-//   //r = Interpolation::ConstrainedSpline(Charge, Req, OCV_length, Xb1);// agregado el 7/11 p/usar la R segun la tabla que relaciona la Req con el soc
+  ye.pData[0] = Interpolation_ConstrainedSpline(Charge, OCV1, OCV_length, X1, true) + I * r1;
+  ye.pData[1] = Interpolation_ConstrainedSpline(Charge, OCV2, OCV_length, X2, true) + I * r2;
   
-//   Ve1 = Interpolation::ConstrainedSpline(Charge, OCV1, OCV_length, X1) + I * r1;
-//   Ve2 = Interpolation::ConstrainedSpline(Charge, OCV2, OCV_length, X2) + I * r2;
-  
-//   ye = {Ve1, Ve2};
-//   y = {V1, V2};
-  
-//   //Xe=Xb+K*(V-Ve);
-//   Xe = Xb + K * (y - ye);
+  y.pData[0] = V1;
+  y.pData[1] = V2;
 
-//   //Pk = inv(inv(Pb) + C'*C);
-//   auto Pb_inv = Pb;
-//   Invert(Pb_inv);
-//   Pk = Pb_inv + ((~C) * C);
-//   Invert(Pk);
+  //Xe=Xb+K*(V-Ve);
+  calculate_Xe();
+  
+  //Pk = inv(inv(Pb) + C'*C);
+  calculate_Pk();
+
 
 //   //Xb=A*Xe+B*I;
 //   Xb = (A * Xe) + ( B * I );
@@ -998,4 +1010,113 @@ void estimacion(){}
 //   if (Xb(3) < 0) Xb(3) = 0;
 //   if (Xb(3) > 1) Xb(3) = 1;
 //  estado = 4; //TiempoRemanente
-// }
+}
+
+void calculate_Pk(void){
+//Pk = inv(inv(Pb) + C'*C);
+//   auto Pb_inv = Pb;
+//   Invert(Pb_inv);
+//   Pk = Pb_inv + ((~C) * C);
+//   Invert(Pk);
+
+
+// Initialize aux matrix
+arm_matrix_instance_f32 Pb_inv;
+float32_t Pb_inv_data[MATRIX_DIM * MATRIX_DIM]; // an array with the same size as Pb
+arm_mat_init_f32(&Pb_inv, MATRIX_DIM, MATRIX_DIM, Pb_inv_data);
+
+arm_matrix_instance_f32 C_transpose;
+float32_t C_transpose_data[MATRIX_DIM * 2]; // an array with the same size as C
+arm_mat_init_f32(&C_transpose, MATRIX_DIM, 2, C_transpose_data);
+
+arm_matrix_instance_f32 temp;
+float32_t temp_data[MATRIX_DIM * MATRIX_DIM]; // an array with the same size as C
+arm_mat_init_f32(&temp, MATRIX_DIM, MATRIX_DIM, temp_data);
+
+// Calculate inv(Pb)
+arm_status status = arm_mat_inverse_f32(&Pb, &Pb_inv);
+
+if (status == ARM_MATH_SINGULAR) {
+    // Handle the error here
+    printf("Pb matrix is singular and cannot be inverted.\n");
+    return;
+}
+
+// Calculate C'*C
+
+arm_mat_trans_f32(&C, &C_transpose);
+
+arm_mat_mult_f32(&C_transpose, &C, &temp);
+
+// Calculate inv(Pb) + C'*C
+arm_mat_add_f32(&Pb_inv, &temp, &Pk);
+
+// Calculate inv(inv(Pb) + C'*C)
+status = arm_mat_inverse_f32(&Pk, &Pk);
+
+if (status == ARM_MATH_SINGULAR) {
+    // Handle the error here
+    printf("Pk matrix is singular and cannot be inverted.\n");
+    return;
+}
+}
+
+void calculate_Xe(void){
+  //Xe=Xb+K*(V-Ve);
+  //Xe = Xb + K * (y - ye);
+
+  // Initialize Aux Matrix
+  arm_matrix_instance_f32 temp;
+  float32_t temp_data[MATRIX_DIM * 1] = {0}; // an array of zeros with the same size as y
+  arm_mat_init_f32(&temp, MATRIX_DIM, 1, temp_data);
+
+  arm_matrix_instance_f32 temp2;
+  float32_t temp2_data[MATRIX_DIM * 1] = {0}; // an array of zeros with the same size as the result of K * (y - ye)
+  arm_mat_init_f32(&temp2, MATRIX_DIM, 1, temp2_data);
+
+  // Calculate (y - ye)
+  arm_mat_sub_f32(&y, &ye, &temp);
+
+  // Calculate K * (y - ye)
+  arm_mat_mult_f32(&K, &temp, &temp2);
+
+  // Calculate Xb + K * (y - ye)
+  arm_mat_add_f32(&Xb, &temp2, &Xe);
+}
+
+void calculate_K(void){
+  //Kalman:
+  //K = Pb * C'/(1+C*Pb*C');
+  //K = (Pb * (~C)) / (1 + (C * (Pb * (~C)))(0, 0));
+
+
+  //Init Temp Matrix
+
+  arm_matrix_instance_f32 C_transpose;
+  float32_t C_transpose_f32[MATRIX_DIM * 2] = {0};
+  arm_mat_init_f32(&C_transpose, MATRIX_DIM, 2, C_transpose_f32);
+
+  arm_matrix_instance_f32 temp;
+  float32_t temp_data[2*MATRIX_DIM] = {0};
+  arm_mat_init_f32(&temp, C.numRows, C.numCols, temp_data);
+
+  // Calculate the transpose of C
+  arm_mat_trans_f32(&C, &C_transpose);
+
+  // Calculate Pb * (~C)
+  arm_mat_mult_f32(&Pb, &C_transpose, &K);
+
+  // Calculate C * (Pb * (~C))
+
+ 
+  arm_mat_mult_f32(&C, &K, &temp);
+
+  // Get the (0, 0) element of the result
+  float32_t scalar = temp.pData[0];
+
+  // Calculate 1 + (C * (Pb * (~C)))(0, 0)
+  scalar += 1.0f;
+
+  // Divide (Pb * (~C)) by (1 + (C * (Pb * (~C)))(0, 0))
+  arm_mat_scale_f32(&K, 1.0f / scalar, &K);
+}
