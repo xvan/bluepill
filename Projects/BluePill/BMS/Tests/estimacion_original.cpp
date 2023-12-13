@@ -25,13 +25,13 @@ const float h = 0.0002778; //depende de la velocidad de la interrupcion de la me
 const float a1 = 1.859;
 const float p1 = 0.446;
 const float r1 = 0.0233; //  modificado el 7/11  p/probar la r segun la tabla. Para eso se define la r como float (igual que Ve)
-const float Q1 = 7.2;
+const float Q1 = 18;
 const float expo1 = 0.99987; //exp(-h / p)
 
 const float a2 = 1.859;
 const float p2 = 0.446;
 const float r2 = 0.0233; //  modificado el 7/11  p/probar la r segun la tabla. Para eso se define la r como float (igual que Ve)
-const float Q2 = 7.2;
+const float Q2 = 18;
 const float expo2 = 0.99987; //exp(-h / p)
 
 
@@ -108,11 +108,22 @@ Matrix<4, 1> Xb ;
 Matrix<2, 1> ye ;
 Matrix<2, 1> y ;
 
-int main(){
-  estimacion_original();
+void init_estimacion_original(float V1, float V2){
+  ci1 = Interpolation::ConstrainedSpline(OCV1, Charge, OCV_length, V1);
+  ci2 = Interpolation::ConstrainedSpline(OCV2, Charge, OCV_length, V2);
+  Xb = {ci1, ci1, ci2, ci2};
+  soc=ci1;
+
+    // CALCULO DFQ //
+  for (int i = 0; i < OCV_length - 1; i++) {
+    DfQ1[i] = (OCV1[i + 1] - OCV1[i]) / (Charge[i + 1] - Charge[i]);
+    DfQ2[i] = (OCV2[i + 1] - OCV2[i]) / (Charge[i + 1] - Charge[i]);
+  }
+  DfQ1[OCV_length - 1] = DfQ1[OCV_length - 2];
+  DfQ2[OCV_length - 1] = DfQ2[OCV_length - 2];
 }
 
-void estimacion_original() {
+void estimacion_original(float V1, float V2, float I) {
 
 //************  SOC A LAZO ABIERTO (7/11)
  //dq=h*I/Q1;
@@ -123,8 +134,8 @@ void estimacion_original() {
   //Linealiza:
   //df=interp1(Dfq(:,1),Dfq(:,2),Xb(2),'spline','extrap');
  
-  double X1 = Xb(0);
-  double X2 = Xb(2);
+  double X1 = Xb(1);
+  double X2 = Xb(3);
  
   
   //float  W[]={0.0000, 0.0196, 0.0385, 0.0567, 0.0743, 0.0913, 0.1077, 0.1237, 0.1392, 0.1543, 0.1689, 0.1832, 0.1971, 0.2106, 0.2238, 0.2368, 0.2494, 0.2617, 0.2738, 0.2856, 0.2972, 0.3085, 0.3196, 0.3305, 0.3412, 0.3517, 0.3620, 0.3722, 0.3821, 0.3919, 0.4016, 0.4110, 0.4204, 0.4295, 0.4386, 0.4475, 0.4562, 0.4649, 0.4734, 0.4818, 0.4901, 0.4982, 0.5063, 0.5142, 0.5221, 0.5298, 0.5375, 0.5450, 0.5525, 0.5599, 0.5671};
@@ -169,4 +180,35 @@ void estimacion_original() {
   if (Xb(3) < 0) Xb(3) = 0;
   if (Xb(3) > 1) Xb(3) = 1;
  estado = 4; //TiempoRemanente
+}
+
+void validate_estimacion_original() {
+
+//************  SOC A LAZO ABIERTO (7/11)
+ //dq=h*I/Q1;
+ //soc=soc+dq;
+//************ 
+
+  for(int i = 0 ; i < 10; i++){
+
+  df1 = 1;
+  df2 = 1;
+  C = {0, df1, 0, 0, 0, 0, 0, df2};
+
+  //Kalman:
+  //K = Pb * C'/(1+C*Pb*C');
+  K = (Pb * (~C)) / (1 + (C * (Pb * (~C)))(0, 0));
+
+  
+  auto Pb_inv = Pb;
+  Invert(Pb_inv);
+  Pk = Pb_inv + ((~C) * C);
+  Invert(Pk);
+
+  //Xb=A*Xe+B*I;
+  // Xb = (A * Xe) + ( B * I );
+
+  //Pb=A*Pk*A' + R1;
+  Pb = ((A * Pk) * (~A)) + R1;
+  }
 }

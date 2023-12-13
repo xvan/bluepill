@@ -1,4 +1,5 @@
 import os
+import io
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -16,14 +17,9 @@ current = np.interp(seconds, x, y[:,0])
 voltage = np.interp(seconds, x, y[:,1])
 
 #plot seconds vs voltage and current
-kk=kk[:7200,:]
 kk=np.array([current,voltage],dtype=np.float32).T
+kk=kk[:1000,:]
 
 kk.tofile('data/thomas.bin')
-print(kk.shape)
 
-# to tenerate the c file
-# bin2c thomas.bin  -C thomas.c
-
-# cast byte array to float array
-#const float (* thomas)[2] = (void *) bin2c_thomas_bin;
+os.system('bin2c data/thomas.bin -H data/thomas.h')

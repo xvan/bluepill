@@ -26,9 +26,10 @@
 
 /* Private includes ----------------------------------------------------------*/
 #include "usbd_cdc_if.h"
-
 #include "circularbuffer_u32.h"
 
+
+#include "../Tests/data/test_data.h"
 
 /* Adc Stuff -----------------------------------------------------------------*/
 #define ADC_CALIBRATION_TIMEOUT_MS ((uint32_t)1)
@@ -129,6 +130,9 @@ uint32_t analogBuffer[ANALOG_CHANNELS][1 << CB_LENGTH2N] = {0};
 void initStructs(void);
 inline float voltage_to_measurement(int, float, float);
 
+void main_loop(void);
+void test_loop(void);
+
 /***************************************************/
 
 /* Private user code ---------------------------------------------------------*/
@@ -150,17 +154,13 @@ int main(void)
 
   /* Logic Data Structures */
   initStructs();
-  
   initialize_calculate();
+  // Read buffer
+  uint8_t rxData[8] = {0};
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USB_DEVICE_Init();
-
-  // Read buffer
-  uint8_t rxData[8];
-  memset(rxData, 0, 8);
-
   Configure_DMA();
   Configure_ADC();
   Activate_ADC();
@@ -170,8 +170,23 @@ int main(void)
   HAL_Delay(500);
   LED_Off();
 
-  Configure_TIMTimeBase();
+  // Configure_TIMTimeBase();
+  // main_loop();
+  
+  test_loop();
+}
 
+void test_loop(){    
+    //init_estimacion_original(V1,V1);
+        
+    for(size_t i = 0; i < TEST_DATA_ROWS ; i++) {
+        estimacion(test_data[i][1], test_data[i][1], test_data[i][0]);
+    }
+
+    while(1);
+}
+
+void main_loop(){
   while(1){
     
     /* DATA AQUISITION *****************************************************/

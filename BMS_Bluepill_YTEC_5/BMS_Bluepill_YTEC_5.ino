@@ -279,7 +279,7 @@ void loop() {
 
 //####------ADQ Y MEDIANA (estado =1)------####//
 void medicion() {
-
+V1
   estado = 1; //medicion
   
   

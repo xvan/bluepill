@@ -151,8 +151,23 @@ void estimacion(float32_t V1, float32_t V2, float32_t I) {
   //Linealiza:
   //df=interp1(Dfq(:,1),Dfq(:,2),Xb(2),'spline','extrap');
 
-  float32_t X1 = Xb.pData[0];
-  float32_t X2 = Xb.pData[2];
+  static bool first_step = true;
+
+  if(first_step)
+  {
+      float ci1 = Interpolation_ConstrainedSpline(OCV1, Charge, OCV_length, V1, true);
+      float ci2 = Interpolation_ConstrainedSpline(OCV2, Charge, OCV_length, V2, true);
+      
+      Xb.pData[0] = ci1;
+      Xb.pData[1] = ci1;
+      Xb.pData[2] = ci2;
+      Xb.pData[3] = ci2;
+      
+      first_step = false;
+  }
+
+  float32_t X1 = Xb.pData[1];
+  float32_t X2 = Xb.pData[3];
 
 
   C.pData[1] = Interpolation_ConstrainedSpline(Charge, DfQ1, OCV_length, X1, true);
@@ -192,54 +207,54 @@ void estimacion(float32_t V1, float32_t V2, float32_t I) {
 }
 
 void calculate_Pk(void){
-//Pk = inv(inv(Pb) + C'*C);
-//   auto Pb_inv = Pb;
-//   Invert(Pb_inv);
-//   Pk = Pb_inv + ((~C) * C);
-//   Invert(Pk);
+  //Pk = inv(inv(Pb) + C'*C);
+  //   auto Pb_inv = Pb;
+  //   Invert(Pb_inv);
+  //   Pk = Pb_inv + ((~C) * C);
+  //   Invert(Pk);
 
+  // Initialize aux matrices
+  arm_matrix_instance_f32 Pb_inv;
+  float32_t Pb_inv_data[MATRIX_DIM * MATRIX_DIM]; // an array with the same size as Pb
+  arm_mat_init_f32(&Pb_inv, MATRIX_DIM, MATRIX_DIM, Pb_inv_data);
 
-// Initialize aux matrix
-arm_matrix_instance_f32 Pb_inv;
-float32_t Pb_inv_data[MATRIX_DIM * MATRIX_DIM]; // an array with the same size as Pb
-arm_mat_init_f32(&Pb_inv, MATRIX_DIM, MATRIX_DIM, Pb_inv_data);
+  arm_matrix_instance_f32 C_transpose;
+  float32_t C_transpose_data[MATRIX_DIM * 2]; // an array with the same size as C
+  arm_mat_init_f32(&C_transpose, MATRIX_DIM, 2, C_transpose_data);
 
-arm_matrix_instance_f32 C_transpose;
-float32_t C_transpose_data[MATRIX_DIM * 2]; // an array with the same size as C
-arm_mat_init_f32(&C_transpose, MATRIX_DIM, 2, C_transpose_data);
+  arm_matrix_instance_f32 temp1;
+  float32_t temp1_data[MATRIX_DIM * MATRIX_DIM]; // an array with the same size as C
+  arm_mat_init_f32(&temp1, MATRIX_DIM, MATRIX_DIM, temp1_data);
 
-arm_matrix_instance_f32 temp;
-float32_t temp_data[MATRIX_DIM * MATRIX_DIM]; // an array with the same size as C
-arm_mat_init_f32(&temp, MATRIX_DIM, MATRIX_DIM, temp_data);
+  arm_matrix_instance_f32 temp2;
+  float32_t temp2_data[MATRIX_DIM * MATRIX_DIM]; // an array with the same size as C
+  arm_mat_init_f32(&temp2, MATRIX_DIM, MATRIX_DIM, temp2_data);
 
-// Calculate inv(Pb)
-arm_status status = arm_mat_inverse_f32(&Pb, &Pb_inv);
+  // Calculate inv(Pb)
+  arm_status status = arm_mat_inverse_f32(&Pb, &Pb_inv);
 
-if (status == ARM_MATH_SINGULAR) {
+  if (status == ARM_MATH_SINGULAR) {
     // Handle the error here
     printf("Pb matrix is singular and cannot be inverted.\n");
     return;
-}
+  }
 
-// Calculate C'*C
+  // Calculate C'*C
+  arm_mat_trans_f32(&C, &C_transpose);
+  arm_mat_mult_f32(&C_transpose, &C, &temp1);
 
-arm_mat_trans_f32(&C, &C_transpose);
+  // Calculate inv(Pb) + C'*C
+  arm_mat_add_f32(&Pb_inv, &temp1, &temp2);
 
-arm_mat_mult_f32(&C_transpose, &C, &temp);
+  // Calculate inv(inv(Pb) + C'*C)
+  status = arm_mat_inverse_f32(&temp2, &Pk);
 
-// Calculate inv(Pb) + C'*C
-arm_mat_add_f32(&Pb_inv, &temp, &Pk);
-
-// Calculate inv(inv(Pb) + C'*C)
-status = arm_mat_inverse_f32(&Pk, &Pk);
-
-if (status == ARM_MATH_SINGULAR) {
+  if (status == ARM_MATH_SINGULAR) {
     // Handle the error here
     printf("Pk matrix is singular and cannot be inverted.\n");
     return;
+  }
 }
-}
-
 void calculate_Xb(float32_t I){
   //Xb=A*Xe+B*I;
   //Xb = (A * Xe) + ( B * I );
