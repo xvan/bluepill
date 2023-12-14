@@ -1,0 +1,52 @@
+vscode
+https://code.visualstudio.com/download
+
+7zip (para descomprimir el openocd)
+https://www.7-zip.org/download.html
+
+openocd (link abajo de todo)
+https://github.com/openocd-org/openocd/releases
+
+compilador
+https://gnutoolchains.com/arm-eabi/
+
+
+cmake
+https://cmake.org/download/
+
+git
+https://git-scm.com/download/win
+(En el instalador cuando te pregunta por un editor, elegir Notepad de la lista)
+
+gun make (bajar el que dice setup)
+https://gnuwin32.sourceforge.net/packages/make.htm
+
+driver stlink V2
+https://www.st.com/en/development-tools/stsw-link009.html
+
+Instrucciones:
+
+1)
+Instalar todo lo de arriba..
+El openocd es un zip, descomprimir y tirar la carpeta en C:/
+Cuando algun instalador pregunte, deci que "si queres agregar los programas al path"
+
+Abrir VSCode,
+Ir a Extensiones (instrucciones aca https://code.visualstudio.com/docs/editor/extension-marketplace)
+Instalar:
+	C/C++ Extension Pack
+        Command Variable  <--- Extensión para que funquen los paths en windows.
+
+Clonar el repositorio:
+	
+	https://learn.microsoft.com/es-es/azure/developer/javascript/how-to/with-visual-studio-code/clone-github-repository?tabs=create-repo-command-palette%2Cinitialize-repo-activity-bar%2Ccreate-branch-command-palette%2Ccommit-changes-command-palette%2Cpush-command-palette
+	
+
+configurar:
+	ctrl+shift+p -> cmake:select kit -> Unspecified
+	ctrl+shift+p -> cmake:set build target -> BMS.elf (el ejecutable)
+	ctrl+shift+p -> cmake:set test target -> BMS.elf (el ejecutable)
+	
+Lanzar:
+	Debug (barra izquierda) -> Simbolo de play arriba (Openocd dbg)
+
