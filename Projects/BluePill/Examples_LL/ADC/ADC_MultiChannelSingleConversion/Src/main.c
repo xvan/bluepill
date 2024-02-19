@@ -63,6 +63,7 @@
   #define ADC_DISABLE_TIMEOUT_MS           ((uint32_t)   1)
   #define ADC_STOP_CONVERSION_TIMEOUT_MS   ((uint32_t)   1)
   #define ADC_CONVERSION_TIMEOUT_MS        ((uint32_t)   2)
+  #define ANALOG_CHANNELS 3
   
   /* Delay between ADC enable and ADC end of calibration.                     */
   /* Delay estimation in CPU cycles: Case of ADC calibration done             */
