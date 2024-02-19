@@ -66,9 +66,9 @@ __IO uint16_t aADCxConvertedData[ANALOG_CHANNELS]; /* ADC group regular conversi
 __IO uint8_t ubDmaTransferStatus = 2; /* Variable set into DMA interruption callback */
 
 /* Variables for ADC conversion data computation to physical values */
-__IO uint16_t voltagePA4 = 0;       /* Value of voltage on GPIO pin (on which is mapped ADC channel) calculated from ADC conversion data (unit: mV) */
-__IO uint16_t voltagePA3 = 0;           /* Value of internal voltage reference VrefInt calculated from ADC conversion data (unit: mV) */
-__IO int16_t voltagePA2 = 0; /* Value of temperature calculated from ADC conversion data (unit: degree Celsius) */
+__IO uint16_t voltagePA4 = 0; /* Value of voltage on GPIO pin (on which is mapped ADC channel) calculated from ADC conversion data (unit: mV) */
+__IO uint16_t voltagePA3 = 0; /* Value of internal voltage reference VrefInt calculated from ADC conversion data (unit: mV) */
+__IO int16_t voltagePA2 = 0;  /* Value of temperature calculated from ADC conversion data (unit: degree Celsius) */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -79,6 +79,11 @@ void Configure_TIMTimeBase(void);
 void LED_On(void);
 void LED_Off(void);
 void LED_Blinking(uint32_t Period);
+
+void Switch_Off(void);
+void Switch_Charge(void);
+void Switch_Discharge(void);
+
 
 void Configure_DMA(void);
 void Configure_ADC(void);
@@ -132,6 +137,7 @@ inline float voltage_to_measurement(int, float, float);
 
 void main_loop(void);
 void test_loop(void);
+void blink_loop(void);
 
 /***************************************************/
 
@@ -170,24 +176,86 @@ int main(void)
   HAL_Delay(500);
   LED_Off();
 
-  // Configure_TIMTimeBase();
+  Configure_TIMTimeBase();
   // main_loop();
-  
-  test_loop();
+  // test_loop();
+blink_loop();
 }
 
-void test_loop(){    
-    //init_estimacion_original(V1,V1);
+void test_loop()
+{    
+    // init_estimacion_original(V1,V1);
         
     for(size_t i = 0; i < TEST_DATA_ROWS ; i++) {
         estimacion(test_data[i][1], test_data[i][1], test_data[i][0]);
     }
 
-    while(1);
+    while (1)
+    ;
 }
 
-void main_loop(){
-  while(1){
+LedBar_StepCounter(){
+  static uint8_t counter = 0;
+  HAL_GPIO_WritePin(LED_BAR_GPIO_Port, LED_BAR_Pin0, (counter & 0x01) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LED_BAR_GPIO_Port, LED_BAR_Pin1, (counter & 0x02) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LED_BAR_GPIO_Port, LED_BAR_Pin2, (counter & 0x04) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LED_BAR_GPIO_Port, LED_BAR_Pin3, (counter & 0x08) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LED_BAR_GPIO_Port, LED_BAR_Pin4, (counter & 0x10) ? GPIO_PIN_SET : GPIO_PIN_RESET);
+  counter++;
+
+}
+
+static void print_buffer(){
+  bool read = false;
+  uint32_t aux_voltage[3];
+  char txData[256];
+
+  while (CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) != 0){
+    read = true;
+    for (int i = 0; i < ANALOG_CHANNELS; i++)
+    {      
+      CircularBuffer_popFront_u32(&analogCircularBufferObjects[i], &aux_voltage[i]);
+    }
+
+    if (read == false) return;
+
+    sprintf(txData, "PA4: %i mV, PA3: %i mV, PA2: %i mV\r\n", aux_voltage[0], aux_voltage[1], aux_voltage[2]);
+    int bytesToWrite = strlen(txData);
+    while (CDC_Transmit_FS((uint8_t *)txData, bytesToWrite) == USBD_BUSY);
+  }
+  
+}
+
+void blink_loop()
+{
+  static int counter = 0;
+  
+  while (1)
+  {
+    LedBar_StepCounter();    
+    HAL_Delay(1000);
+
+    print_buffer();
+
+    counter++;
+
+    if(counter == 5){
+      LED_On();
+      Switch_Discharge();
+    }
+
+    if(counter == 10){
+      LED_Off();
+      Switch_Off();
+      counter = 0;
+    }
+  }
+}
+
+void main_loop()
+{
+  while (1)
+  {
     
     /* DATA AQUISITION *****************************************************/
     if( CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) == 0 )
@@ -228,12 +296,12 @@ void main_loop(){
     sprintf(txData, "PA4: %f mV, PA3: %f mV, PA2: %f mV\r\n", aux_mean[0], aux_mean[1], aux_mean[2]);
     int bytesToWrite = strlen(txData);
 
-    while (CDC_Transmit_FS((uint8_t *)txData, bytesToWrite) == USBD_BUSY);
-
+    while (CDC_Transmit_FS((uint8_t *)txData, bytesToWrite) == USBD_BUSY)
+      ;
 
     /* CURRENT VALUES */
     float32_t V1 = aux_mean[0];
-    float32_t V2 = aux_mean[1]-aux_mean[0];
+    float32_t V2 = aux_mean[1] - aux_mean[0];
     float32_t I = aux_mean[3];
     
     estimacion(V1, V2, I);
@@ -385,6 +453,22 @@ void AdcDmaTransferComplete_Callback()
   adquisicion();
 }
 
+void GPIO_Port_Init(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin)
+{  
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOx, GPIO_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : LED_Pin */
+  GPIO_InitStruct.Pin = GPIO_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
+}
+
+
 /**
  * @brief GPIO Initialization Function
  * @param None
@@ -392,22 +476,40 @@ void AdcDmaTransferComplete_Callback()
  */
 static void MX_GPIO_Init(void)
 {
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
+  
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOC_CLK_ENABLE();
+__HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  
+  GPIO_Port_Init(LED_GPIO_Port, LED_Pin);
+  
+  GPIO_Port_Init(LED_BAR_GPIO_Port, LED_BAR_Pin0);
+  GPIO_Port_Init(LED_BAR_GPIO_Port, LED_BAR_Pin1);
+  GPIO_Port_Init(LED_BAR_GPIO_Port, LED_BAR_Pin2);
+  GPIO_Port_Init(LED_BAR_GPIO_Port, LED_BAR_Pin3);
+  GPIO_Port_Init(LED_BAR_GPIO_Port, LED_BAR_Pin4);
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+  GPIO_Port_Init(SWITCH_GPIO_Port, SWITCH_PIN_Discharge);
+  GPIO_Port_Init(SWITCH_GPIO_Port, SWITCH_PIN_Charge);
+}
 
-  /*Configure GPIO pin : LED_Pin */
-  GPIO_InitStruct.Pin = LED_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
+void Switch_Off()
+{
+  HAL_GPIO_WritePin(SWITCH_GPIO_Port, SWITCH_PIN_Discharge, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(SWITCH_GPIO_Port, SWITCH_PIN_Charge, GPIO_PIN_RESET);
+}
+
+void Switch_Charge(){
+  HAL_GPIO_WritePin(SWITCH_GPIO_Port, SWITCH_PIN_Discharge, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(SWITCH_GPIO_Port, SWITCH_PIN_Charge, GPIO_PIN_SET);
+}
+
+void Switch_Discharge(){
+  HAL_GPIO_WritePin(SWITCH_GPIO_Port, SWITCH_PIN_Charge, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(SWITCH_GPIO_Port, SWITCH_PIN_Discharge, GPIO_PIN_SET);
 }
 
 void Configure_DMA(void)
@@ -478,7 +580,7 @@ void Configure_ADC(void)
   /* Configure GPIO in analog mode to be used as ADC input */
   LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_4, LL_GPIO_MODE_ANALOG);
   LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_3, LL_GPIO_MODE_ANALOG);
-  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_2, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_0, LL_GPIO_MODE_ANALOG);
 
   /*## Configuration of NVIC #################################################*/
   /* Configure NVIC to enable ADC1 interruptions */
@@ -583,7 +685,7 @@ void Configure_ADC(void)
     /* Set ADC group regular sequence: channel on the selected sequence rank. */
     LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_4);
     LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_3);
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_2);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_0);
   }
 
   /*## Configuration of ADC hierarchical scope: ADC group injected ###########*/
@@ -651,7 +753,7 @@ void Configure_ADC(void)
     /*       "LL_ADC_SetChannelSamplingTime()".                               */
     LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_4, LL_ADC_SAMPLINGTIME_239CYCLES_5);
     LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_3, LL_ADC_SAMPLINGTIME_239CYCLES_5);
-    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_2, LL_ADC_SAMPLINGTIME_239CYCLES_5);    
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_0, LL_ADC_SAMPLINGTIME_239CYCLES_5);    
   }
 
   /*## Configuration of ADC transversal scope: analog watchdog ###############*/
@@ -800,7 +902,7 @@ void assert_failed(uint8_t *file, uint32_t line)
 
 inline float voltage_to_measurement(int voltage,float A, float B)
 {
-  return A*voltage + B;
+  return A * voltage + B;
 }
 
 
@@ -827,7 +929,8 @@ void adquisicion()
     //   float I = median(Ii,MEDIAN_LENGTH);    
     // }
 
-void initStructs(){
+void initStructs()
+{
   for (int i = 0; i < ANALOG_CHANNELS; i++)
   {
     CircularBuffer_init_u32(&analogCircularBufferObjects[i], analogBuffer[i], CB_LENGTH2N);    
