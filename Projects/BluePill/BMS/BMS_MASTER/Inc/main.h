@@ -42,6 +42,17 @@ void Error_Handler(void);
 #define LED_Pin GPIO_PIN_13
 #define LED_GPIO_Port GPIOC
 
+#define LED_BAR_GPIO_Port GPIOB
+#define LED_BAR_Pin0 GPIO_PIN_9
+#define LED_BAR_Pin1 GPIO_PIN_8
+#define LED_BAR_Pin2 GPIO_PIN_5
+#define LED_BAR_Pin3 GPIO_PIN_4
+#define LED_BAR_Pin4 GPIO_PIN_3
+
+#define SWITCH_GPIO_Port GPIOB
+#define SWITCH_PIN_Discharge GPIO_PIN_10
+#define SWITCH_PIN_Charge GPIO_PIN_11
+
 #define LED_BLINK_FAST  200
 #define LED_BLINK_SLOW  500
 #define LED_BLINK_ERROR 1000

@@ -54,7 +54,7 @@
 /* Definition of ADCx conversions data table size */
 /* Size of array set to ADC sequencer number of ranks converted,            */
 /* to have a rank in each array address.                                    */
-#define ANALOG_CHANNELS 3
+#define ANALOG_CHANNELS 2
 
 /* Variables for ADC conversion data */
 __IO uint16_t aADCxConvertedData[ANALOG_CHANNELS]; /* ADC group regular conversion data */
@@ -120,8 +120,8 @@ float ChanMedian[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
 float ChanMean[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
 
 //Coeficinetes de escala para cada canal: V = A*Vv + B
-float A_Coef[ANALOG_CHANNELS] = {1.0, 1.0, 1.0};
-float B_Coef[ANALOG_CHANNELS] = {0.0, 0.0, 0.0};
+float A_Coef[ANALOG_CHANNELS] = {1.0, 1.0};
+float B_Coef[ANALOG_CHANNELS] = {0.0, 0.0};
 
 #define CB_LENGTH2N 5
 static CircularBufferObject_t_u32 analogCircularBufferObjects[ANALOG_CHANNELS];
@@ -132,6 +132,7 @@ inline float voltage_to_measurement(int, float, float);
 
 void main_loop(void);
 void test_loop(void);
+void blink_loop(void);
 
 /***************************************************/
 
@@ -171,9 +172,9 @@ int main(void)
   LED_Off();
 
   // Configure_TIMTimeBase();
-  // main_loop();
-  
-  test_loop();
+  // main_loop();  
+  //test_loop();
+  blink_loop();
 }
 
 void test_loop(){    
@@ -385,6 +386,23 @@ void AdcDmaTransferComplete_Callback()
   adquisicion();
 }
 
+
+
+static void GPIO_Port_Init(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin)
+{  
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOx, GPIO_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : LED_Pin */
+  GPIO_InitStruct.Pin = GPIO_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
+}
+
 /**
  * @brief GPIO Initialization Function
  * @param None
@@ -394,20 +412,20 @@ static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-  /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
+  /* GPIO Ports Clock Enable */  
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : LED_Pin */
-  GPIO_InitStruct.Pin = LED_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
+  GPIO_Port_Init(LED_GPIO_Port, LED_Pin);
+  GPIO_Port_Init(EQU_GPIO_PORT, EQU_BALANCE_CHA_PIN);
+  GPIO_Port_Init(EQU_GPIO_PORT, EQU_BALANCE_CHB_PIN);
+  
+  GPIO_Port_Init(ALARM_GPIO_Port, ALARM_PIN);  
 }
 
 void Configure_DMA(void)
@@ -476,9 +494,9 @@ void Configure_ADC(void)
   LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_GPIOA);
 
   /* Configure GPIO in analog mode to be used as ADC input */
-  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_4, LL_GPIO_MODE_ANALOG);
-  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_3, LL_GPIO_MODE_ANALOG);
-  LL_GPIO_SetPinMode(GPIOA, LL_GPIO_PIN_2, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(EQU_GPIO_PORT, EQU_SENSE_CHA_PIN, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(EQU_GPIO_PORT, EQU_BALANCE_CHB_PIN, LL_GPIO_MODE_ANALOG);
+
 
   /*## Configuration of NVIC #################################################*/
   /* Configure NVIC to enable ADC1 interruptions */
@@ -575,15 +593,14 @@ void Configure_ADC(void)
     /*       "LL_ADC_REG_SetSequencerLength()".                               */
 
     /* Set ADC group regular sequencer length and scan direction */
-    LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_ENABLE_3RANKS);
+    LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_ENABLE_2RANKS);
 
     /* Set ADC group regular sequencer discontinuous mode */
     // LL_ADC_REG_SetSequencerDiscont(ADC1, LL_ADC_REG_SEQ_DISCONT_DISABLE);
 
     /* Set ADC group regular sequence: channel on the selected sequence rank. */
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_4);
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_3);
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_2);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_0);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_2);    
   }
 
   /*## Configuration of ADC hierarchical scope: ADC group injected ###########*/
@@ -649,8 +666,7 @@ void Configure_ADC(void)
     /*       temperature sensor) constraints.                                 */
     /*       Refer to description of function                                 */
     /*       "LL_ADC_SetChannelSamplingTime()".                               */
-    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_4, LL_ADC_SAMPLINGTIME_239CYCLES_5);
-    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_3, LL_ADC_SAMPLINGTIME_239CYCLES_5);
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_0, LL_ADC_SAMPLINGTIME_239CYCLES_5);
     LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_2, LL_ADC_SAMPLINGTIME_239CYCLES_5);    
   }
 
@@ -833,3 +849,29 @@ void initStructs(){
     CircularBuffer_init_u32(&analogCircularBufferObjects[i], analogBuffer[i], CB_LENGTH2N);    
   }
 }
+
+static void Step_Equ()
+{
+  HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_CHA_PIN, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_CHB_PIN, GPIO_PIN_SET);
+  // static int state = 0;
+
+    
+  // HAL_GPIO_TogglePin(EQU_GPIO_PORT, EQU_BALANCE_CHA_PIN);
+  // if (state % 2 == 0)
+  //   HAL_GPIO_TogglePin(EQU_GPIO_PORT, EQU_BALANCE_CHB_PIN);
+
+  // state++;  
+}
+
+void blink_loop()
+{    
+  while (1)
+  {    
+    HAL_Delay(5000);
+    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+    Step_Equ();    
+  }
+}
+
+

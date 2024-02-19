@@ -27,7 +27,6 @@
 extern "C" {
 #endif
 
-
 #include "stm32f1xx_hal.h"
 #include "stm32f1xx_ll_tim.h"
 #include "stm32f1xx_ll_bus.h"
@@ -45,6 +44,16 @@ void Error_Handler(void);
 #define LED_BLINK_FAST  200
 #define LED_BLINK_SLOW  500
 #define LED_BLINK_ERROR 1000
+
+#define EQU_GPIO_PORT GPIOA
+#define EQU_SENSE_CHA_PIN GPIO_PIN_0
+#define EQU_BALANCE_CHA_PIN GPIO_PIN_1
+#define EQU_SENSE_CHB_PIN GPIO_PIN_2
+#define EQU_BALANCE_CHB_PIN GPIO_PIN_3
+
+#define ALARM_GPIO_Port GPIOC
+#define ALARM_PIN GPIO_PIN_15
+
 
 #define INTERNAL_TEMPSENSOR_AVGSLOPE   ((int32_t) 4300)        /* Internal temperature sensor, parameter Avg_Slope (unit: uV/DegCelsius). Refer to device datasheet for min/typ/max values. */
 #define INTERNAL_TEMPSENSOR_V25        ((int32_t) 1430)        /* Internal temperature sensor, parameter V25 (unit: mV). Refer to device datasheet for min/typ/max values. */
