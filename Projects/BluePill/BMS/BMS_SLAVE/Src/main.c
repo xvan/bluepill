@@ -495,7 +495,7 @@ void Configure_ADC(void)
 
   /* Configure GPIO in analog mode to be used as ADC input */
   LL_GPIO_SetPinMode(EQU_GPIO_PORT, EQU_SENSE_CHA_PIN, LL_GPIO_MODE_ANALOG);
-  LL_GPIO_SetPinMode(EQU_GPIO_PORT, EQU_BALANCE_CHB_PIN, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(EQU_GPIO_PORT, EQU_SENSE_CHB_PIN, LL_GPIO_MODE_ANALOG);
 
 
   /*## Configuration of NVIC #################################################*/
@@ -852,7 +852,7 @@ void initStructs(){
 
 static void Step_Equ()
 {
-  HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_CHA_PIN, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_CHA_PIN, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_CHB_PIN, GPIO_PIN_SET);
   // static int state = 0;
 
