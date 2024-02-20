@@ -21,7 +21,7 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "si5351.h"
+
 /** @addtogroup STM32F1xx_HAL_Examples
   * @{
   */
@@ -34,8 +34,7 @@
 /* Private define ------------------------------------------------------------*/
 /* Uncomment this line to use the board as master, if not it is used as slave */
 #define MASTER_BOARD
-#define SI5351_BUS_BASE_ADDR  0x60
-#define I2C_ADDRESS           0x30F
+#define I2C_ADDRESS        0x30F
 
 /* I2C SPEEDCLOCK define to max value: 400 KHz on STM32F1xx*/
 #define I2C_SPEEDCLOCK   100000
@@ -43,6 +42,7 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
+/* I2C handler declaration */
 
 
 /* Buffer used for transmission */
@@ -55,10 +55,11 @@ uint8_t aRxBuffer[RXBUFFERSIZE];
 void SystemClock_Config(void);
 static uint16_t Buffercmp(uint8_t* pBuffer1, uint8_t* pBuffer2, uint16_t BufferLength);
 static void Error_Handler(void);
-static void MX_GPIO_Init(void);
-static void BSP_LED_On(void);
-static void BSP_LED_Off(void);
-static void BSP_LED_Toggle(void);
+
+void MX_GPIO_Init(void);
+void BSP_LED_On(void);
+void BSP_LED_Off(void);
+void BSP_LED_Toggle(void);
 
 I2C_HandleTypeDef I2cHandle;
 
@@ -88,27 +89,136 @@ int main(void)
 
   /* Configure LED2 */
   MX_GPIO_Init();
-
+  
 
   /*##-1- Configure the I2C peripheral ######################################*/
   I2cHandle.Instance             = I2Cx;
   I2cHandle.Init.ClockSpeed      = I2C_SPEEDCLOCK;
   I2cHandle.Init.DutyCycle       = I2C_DUTYCYCLE;
-  I2cHandle.Init.OwnAddress1     = SI5351_BUS_BASE_ADDR;
-  I2cHandle.Init.AddressingMode  = I2C_ADDRESSINGMODE_7BIT;
+  I2cHandle.Init.OwnAddress1     = I2C_ADDRESS;
+  I2cHandle.Init.AddressingMode  = I2C_ADDRESSINGMODE_10BIT;
   I2cHandle.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
   I2cHandle.Init.OwnAddress2     = 0xFF;
   I2cHandle.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
-  I2cHandle.Init.NoStretchMode   = I2C_NOSTRETCH_DISABLE;
+  I2cHandle.Init.NoStretchMode   = I2C_NOSTRETCH_DISABLE;  
   
   if(HAL_I2C_Init(&I2cHandle) != HAL_OK)
   {
     /* Initialization Error */
     Error_Handler();
   }
+  
 
-  volatile uint8_t rval;
-  rval = si5351_ping();
+#ifdef MASTER_BOARD
+  
+  /* Configure User push-button */
+  //BSP_PB_Init(BUTTON_USER, BUTTON_MODE_GPIO);
+
+  // /* Wait for User push-button press before starting the Communication */
+  // while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_RESET)
+  // {
+  // }
+  
+  // /* Wait for User push-button release before starting the Communication */
+  // while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_SET)
+  // {
+  // }
+
+  BSP_LED_On();
+  HAL_Delay(1000);
+  BSP_LED_Off();
+  HAL_Delay(1000);
+  BSP_LED_On();
+  HAL_Delay(1000);
+  BSP_LED_Off();
+  
+  /* The board sends the message and expects to receive it back */
+  
+  /*##-2- Start the transmission process #####################################*/  
+  /* While the I2C in reception process, user can transmit data through 
+     "aTxBuffer" buffer */
+  /* Timeout is set to 10S */
+  while(HAL_I2C_Master_Transmit(&I2cHandle, (uint16_t)I2C_ADDRESS, (uint8_t*)aTxBuffer, TXBUFFERSIZE, 10000)!= HAL_OK)
+  {
+    /* Error_Handler() function is called when Timeout error occurs.
+       When Acknowledge failure occurs (Slave don't acknowledge its address)
+       Master restarts communication */
+    if (HAL_I2C_GetError(&I2cHandle) != HAL_I2C_ERROR_AF)
+    {
+      Error_Handler();
+    }
+  }
+  
+  /* Turn LED2 on: Transfer in Transmission process is correct */
+  BSP_LED_On();
+  HAL_Delay(1000);
+  BSP_LED_Off();
+  HAL_Delay(1000);
+  BSP_LED_On();
+  HAL_Delay(1000);
+  BSP_LED_Off(); 
+
+  /* Wait for User push-button press before starting the Communication */
+  // while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_RESET)
+  // {
+  // }
+  
+  // /* Wait for User push-button release before starting the Communication */
+  // while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_SET)
+  // {
+  // }
+
+  /*##-3- Put I2C peripheral in reception process ############################*/ 
+  /* Timeout is set to 10S */ 
+  while(HAL_I2C_Master_Receive(&I2cHandle, (uint16_t)I2C_ADDRESS, (uint8_t *)aRxBuffer, RXBUFFERSIZE, 10000) != HAL_OK)
+  {
+    /* Error_Handler() function is called when Timeout error occurs.
+       When Acknowledge failure occurs (Slave don't acknowledge it's address)
+       Master restarts communication */
+    if (HAL_I2C_GetError(&I2cHandle) != HAL_I2C_ERROR_AF)
+    {
+      Error_Handler();
+    }
+  }
+  
+  /* Turn LED2 off: Transfer in reception process is correct */
+  BSP_LED_On();
+  HAL_Delay(1000);
+  BSP_LED_Off();
+  HAL_Delay(1000);
+  BSP_LED_On();
+  HAL_Delay(1000);
+  BSP_LED_Off(); 
+  
+#else
+  
+  /* The board receives the message and sends it back */
+
+  /*##-2- Put I2C peripheral in reception process ############################*/ 
+  /* Timeout is set to 10S  */
+  if(HAL_I2C_Slave_Receive(&I2cHandle, (uint8_t *)aRxBuffer, RXBUFFERSIZE, 10000) != HAL_OK)
+  {
+    /* Transfer error in reception process */
+    Error_Handler();
+  }
+  
+  /* Turn LED2 on: Transfer in reception process is correct */
+  BSP_LED_On();
+  
+  /*##-3- Start the transmission process #####################################*/  
+  /* While the I2C in reception process, user can transmit data through 
+     "aTxBuffer" buffer */
+  /* Timeout is set to 10S */
+  if(HAL_I2C_Slave_Transmit(&I2cHandle, (uint8_t*)aTxBuffer, TXBUFFERSIZE, 10000)!= HAL_OK)
+  {
+    /* Transfer error in transmission process */
+    Error_Handler();    
+  }
+  
+  /* Turn LED2 off: Transfer in transmission process is correct */
+  BSP_LED_Off();
+  
+#endif /* MASTER_BOARD */
 
   /*##-4- Compare the sent and received buffers ##############################*/
   if(Buffercmp((uint8_t*)aTxBuffer,(uint8_t*)aRxBuffer,RXBUFFERSIZE))
@@ -197,7 +307,7 @@ static void Error_Handler(void)
   /* Error if LED2 is slowly blinking (1 sec. period) */
   while(1)
   {    
-    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin); 
+    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
     HAL_Delay(1000);
   } 
 }
@@ -251,7 +361,7 @@ void assert_failed(uint8_t* file, uint32_t line)
   * @param None
   * @retval None
   */
-static void MX_GPIO_Init(void)
+void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
@@ -274,7 +384,7 @@ static void MX_GPIO_Init(void)
 
 void BSP_LED_On()
 {
-  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET); 
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET); 
 }
 
 /**
@@ -285,7 +395,7 @@ void BSP_LED_On()
   */
 void BSP_LED_Off()
 {
-  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET); 
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET); 
 }
 
 /**
@@ -298,7 +408,6 @@ void BSP_LED_Toggle()
 {
   HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 }
-
 /**
   * @}
   */
