@@ -193,7 +193,7 @@ USBD_StatusTypeDef  USBD_StdItfReq(USBD_HandleTypeDef *pdev,
 
           if (LOBYTE(req->wIndex) <= USBD_MAX_NUM_INTERFACES)
           {
-            ret = (USBD_StatusTypeDef)pdev->pClass->Setup(pdev, req);
+            ret = (USBD_StatusTypeDef)(int)pdev->pClass->Setup(pdev, req);
 
             if ((req->wLength == 0U) && (ret == USBD_OK))
             {
@@ -246,7 +246,7 @@ USBD_StatusTypeDef  USBD_StdEPReq(USBD_HandleTypeDef *pdev,
       /* Check if it is a class request */
       if ((req->bmRequest & 0x60U) == 0x20U)
       {
-        ret = (USBD_StatusTypeDef)pdev->pClass->Setup(pdev, req);
+        ret = (USBD_StatusTypeDef)(int)pdev->pClass->Setup(pdev, req);
 
         return ret;
       }
