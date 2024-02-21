@@ -33,17 +33,16 @@
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
 /* Uncomment this line to use the board as master, if not it is used as slave */
-//#define MASTER_BOARD
+#define MASTER_BOARD
 #define I2C_ADDRESS        0x30F
 
 /* I2C SPEEDCLOCK define to max value: 400 KHz on STM32F1xx*/
-#define I2C_SPEEDCLOCK   400000
+#define I2C_SPEEDCLOCK   100000
 #define I2C_DUTYCYCLE    I2C_DUTYCYCLE_2
 
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
 /* I2C handler declaration */
-I2C_HandleTypeDef I2cHandle;
 
 
 /* Buffer used for transmission */
@@ -56,6 +55,13 @@ uint8_t aRxBuffer[RXBUFFERSIZE];
 void SystemClock_Config(void);
 static uint16_t Buffercmp(uint8_t* pBuffer1, uint8_t* pBuffer2, uint16_t BufferLength);
 static void Error_Handler(void);
+
+void MX_GPIO_Init(void);
+void BSP_LED_On(void);
+void BSP_LED_Off(void);
+void BSP_LED_Toggle(void);
+
+I2C_HandleTypeDef I2cHandle;
 
 /* Private functions ---------------------------------------------------------*/
 
@@ -82,7 +88,7 @@ int main(void)
   SystemClock_Config();
 
   /* Configure LED2 */
-  BSP_LED_Init(LED2);
+  MX_GPIO_Init();
   
 
   /*##-1- Configure the I2C peripheral ######################################*/
@@ -106,17 +112,25 @@ int main(void)
 #ifdef MASTER_BOARD
   
   /* Configure User push-button */
-  BSP_PB_Init(BUTTON_USER, BUTTON_MODE_GPIO);
+  //BSP_PB_Init(BUTTON_USER, BUTTON_MODE_GPIO);
 
-  /* Wait for User push-button press before starting the Communication */
-  while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_RESET)
-  {
-  }
+  // /* Wait for User push-button press before starting the Communication */
+  // while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_RESET)
+  // {
+  // }
   
-  /* Wait for User push-button release before starting the Communication */
-  while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_SET)
-  {
-  }
+  // /* Wait for User push-button release before starting the Communication */
+  // while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_SET)
+  // {
+  // }
+
+  BSP_LED_On();
+  HAL_Delay(1000);
+  BSP_LED_Off();
+  HAL_Delay(1000);
+  BSP_LED_On();
+  HAL_Delay(1000);
+  BSP_LED_Off();
   
   /* The board sends the message and expects to receive it back */
   
@@ -136,17 +150,23 @@ int main(void)
   }
   
   /* Turn LED2 on: Transfer in Transmission process is correct */
-  BSP_LED_On(LED2);
+  BSP_LED_On();
+  HAL_Delay(1000);
+  BSP_LED_Off();
+  HAL_Delay(1000);
+  BSP_LED_On();
+  HAL_Delay(1000);
+  BSP_LED_Off(); 
 
   /* Wait for User push-button press before starting the Communication */
-  while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_RESET)
-  {
-  }
+  // while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_RESET)
+  // {
+  // }
   
-  /* Wait for User push-button release before starting the Communication */
-  while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_SET)
-  {
-  }
+  // /* Wait for User push-button release before starting the Communication */
+  // while (BSP_PB_GetState(BUTTON_USER) != GPIO_PIN_SET)
+  // {
+  // }
 
   /*##-3- Put I2C peripheral in reception process ############################*/ 
   /* Timeout is set to 10S */ 
@@ -162,7 +182,13 @@ int main(void)
   }
   
   /* Turn LED2 off: Transfer in reception process is correct */
-  BSP_LED_Off(LED2);
+  BSP_LED_On();
+  HAL_Delay(1000);
+  BSP_LED_Off();
+  HAL_Delay(1000);
+  BSP_LED_On();
+  HAL_Delay(1000);
+  BSP_LED_Off(); 
   
 #else
   
@@ -177,7 +203,7 @@ int main(void)
   }
   
   /* Turn LED2 on: Transfer in reception process is correct */
-  BSP_LED_On(LED2);
+  BSP_LED_On();
   
   /*##-3- Start the transmission process #####################################*/  
   /* While the I2C in reception process, user can transmit data through 
@@ -190,7 +216,7 @@ int main(void)
   }
   
   /* Turn LED2 off: Transfer in transmission process is correct */
-  BSP_LED_Off(LED2);
+  BSP_LED_Off();
   
 #endif /* MASTER_BOARD */
 
@@ -281,7 +307,7 @@ static void Error_Handler(void)
   /* Error if LED2 is slowly blinking (1 sec. period) */
   while(1)
   {    
-    BSP_LED_Toggle(LED2); 
+    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
     HAL_Delay(1000);
   } 
 }
@@ -329,6 +355,59 @@ void assert_failed(uint8_t* file, uint32_t line)
 }
 #endif
 
+
+/**
+  * @brief GPIO Initialization Function
+  * @param None
+  * @retval None
+  */
+void MX_GPIO_Init(void)
+{
+  GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+  /* GPIO Ports Clock Enable */
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : LED_Pin */
+  GPIO_InitStruct.Pin = LED_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
+
+}
+
+void BSP_LED_On()
+{
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET); 
+}
+
+/**
+  * @brief  Turns selected LED Off.
+  * @param  Led: Specifies the Led to be set off. 
+  *   This parameter can be one of following parameters:
+  *     @arg LED2
+  */
+void BSP_LED_Off()
+{
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET); 
+}
+
+/**
+  * @brief  Toggles the selected LED.
+  * @param  Led: Specifies the Led to be toggled. 
+  *   This parameter can be one of following parameters:
+  *            @arg  LED2
+  */
+void BSP_LED_Toggle()
+{
+  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+}
 /**
   * @}
   */

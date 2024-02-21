@@ -22,7 +22,6 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f1xx_hal.h"
-#include "stm32f1xx_nucleo.h"
 
 
 /* Exported types ------------------------------------------------------------*/
@@ -52,5 +51,8 @@
 /* Exported macro ------------------------------------------------------------*/
 #define COUNTOF(__BUFFER__)   (sizeof(__BUFFER__) / sizeof(*(__BUFFER__)))
 /* Exported functions ------------------------------------------------------- */
+#define LED_Pin GPIO_PIN_13
+#define LED_GPIO_Port GPIOC
 
+extern I2C_HandleTypeDef I2cHandle;
 #endif /* __MAIN_H */
