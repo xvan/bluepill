@@ -23,51 +23,41 @@
 #ifndef __MAIN_H
 #define __MAIN_H
 
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f1xx_hal.h"
 
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
-
-/* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
-/* USER CODE BEGIN ET */
-
-/* USER CODE END ET */
-
 /* Exported constants --------------------------------------------------------*/
-/* USER CODE BEGIN EC */
+/* User can use this section to tailor I2Cx/I2Cx instance used and associated
+   resources */
+/* Definition for I2Cx clock resources */
+#define I2Cx                            I2C1
+#define I2Cx_CLK_ENABLE()               __HAL_RCC_I2C1_CLK_ENABLE()
+#define I2Cx_SDA_GPIO_CLK_ENABLE()      __HAL_RCC_GPIOB_CLK_ENABLE()
+#define I2Cx_SCL_GPIO_CLK_ENABLE()      __HAL_RCC_GPIOB_CLK_ENABLE() 
 
-/* USER CODE END EC */
+#define I2Cx_FORCE_RESET()              __HAL_RCC_I2C1_FORCE_RESET()
+#define I2Cx_RELEASE_RESET()            __HAL_RCC_I2C1_RELEASE_RESET()
+
+/* Definition for I2Cx Pins */
+#define I2Cx_SCL_PIN                    GPIO_PIN_6
+#define I2Cx_SCL_GPIO_PORT              GPIOB
+#define I2Cx_SDA_PIN                    GPIO_PIN_7
+#define I2Cx_SDA_GPIO_PORT              GPIOB
+
+/* Size of Transmission buffer */
+#define TXBUFFERSIZE                      (COUNTOF(aTxBuffer) - 1)
+/* Size of Reception buffer */
+#define RXBUFFERSIZE                      TXBUFFERSIZE
 
 /* Exported macro ------------------------------------------------------------*/
-/* USER CODE BEGIN EM */
-
-/* USER CODE END EM */
-
+#define COUNTOF(__BUFFER__)   (sizeof(__BUFFER__) / sizeof(*(__BUFFER__)))
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
-
-/* USER CODE BEGIN EFP */
-
-/* USER CODE END EFP */
-
-/* Private defines -----------------------------------------------------------*/
 #define LED_Pin GPIO_PIN_13
 #define LED_GPIO_Port GPIOC
-/* USER CODE BEGIN Private defines */
 
-/* USER CODE END Private defines */
-
-#ifdef __cplusplus
-}
-#endif
-
+extern I2C_HandleTypeDef I2cHandle;
 #endif /* __MAIN_H */
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

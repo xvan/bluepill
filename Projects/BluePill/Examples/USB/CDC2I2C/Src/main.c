@@ -24,9 +24,35 @@
 /* Private includes ----------------------------------------------------------*/
 #include "usbd_cdc_if.h"
 
+/* Private define ------------------------------------------------------------*/
+/* Uncomment this line to use the board as master, if not it is used as slave */
+#define MASTER_BOARD
+#define I2C_ADDRESS        0x30F
+
+/* I2C SPEEDCLOCK define to max value: 400 KHz on STM32F1xx*/
+#define I2C_SPEEDCLOCK   100000
+#define I2C_DUTYCYCLE    I2C_DUTYCYCLE_2
+
+/* Private variables ---------------------------------------------------------*/
+/* I2C handler declaration */
+
+/* Buffer used for transmission */
+uint8_t aTxBuffer[] = "****I2C_TwoBoards communication based on Polling****\r\n";
+
+/* Buffer used for reception */
+uint8_t aRxBuffer[RXBUFFERSIZE];
+
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
+
+
+void MX_GPIO_Init(void);
+void LED_On(void);
+void LED_Off(void);
+void LED_Toggle(void);
+void FlashLed(void);
+
+I2C_HandleTypeDef I2cHandle;
 
 /* Private user code ---------------------------------------------------------*/
 
@@ -46,30 +72,72 @@ int main(void){
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_USB_DEVICE_Init();
 
-  // Read buffer
-  uint8_t rxData[8];
-  memset(rxData, 0, 8);
-
-  // Flash LED briefly on reset
-  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-  HAL_Delay(500);
-  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
-
-  /* Infinite loop */
-  while (1)
-  {    
-    // Echo data
-    uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
-    if (bytesAvailable > 0) {
-    	uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
-    	if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK) {
-            while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY);
-    	}
-    }
-
+    /*##-1- Configure the I2C peripheral ######################################*/
+  I2cHandle.Instance             = I2Cx;
+  I2cHandle.Init.ClockSpeed      = I2C_SPEEDCLOCK;
+  I2cHandle.Init.DutyCycle       = I2C_DUTYCYCLE;
+  I2cHandle.Init.OwnAddress1     = I2C_ADDRESS;
+  I2cHandle.Init.AddressingMode  = I2C_ADDRESSINGMODE_10BIT;
+  I2cHandle.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  I2cHandle.Init.OwnAddress2     = 0xFF;
+  I2cHandle.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  I2cHandle.Init.NoStretchMode   = I2C_NOSTRETCH_DISABLE;  
+  
+  if(HAL_I2C_Init(&I2cHandle) != HAL_OK)
+  {
+    /* Initialization Error */
+    Error_Handler();
   }
+
+#ifdef MASTER_BOARD
+  MX_USB_DEVICE_Init();
+  
+  FlashLed();
+  
+  uint8_t *msg = "Hello, World!\r\n";
+  while (CDC_Transmit_FS((uint8_t *)msg, strlen(msg)) == USBD_BUSY);
+ 
+  while(1){
+    while(HAL_I2C_Master_Receive(&I2cHandle, (uint16_t)I2C_ADDRESS, (uint8_t *)aRxBuffer, RXBUFFERSIZE, 10000) != HAL_OK)
+      {
+        /* Error_Handler() function is called when Timeout error occurs.
+          When Acknowledge failure occurs (Slave don't acknowledge it's address)
+          Master restarts communication */
+        if (HAL_I2C_GetError(&I2cHandle) != HAL_I2C_ERROR_AF)
+        {
+          Error_Handler();
+        }
+      }
+
+      while (CDC_Transmit_FS(aRxBuffer, RXBUFFERSIZE) == USBD_BUSY);
+      HAL_Delay(2000);
+  }
+#else
+
+  FlashLed();
+
+  while (1)
+  {
+    if(HAL_I2C_Slave_Transmit(&I2cHandle, (uint8_t*)aTxBuffer, strmlen(aTxBuffer), 10000)!= HAL_OK)
+    { 
+      /* Transfer error in transmission process */
+      Error_Handler();    
+    }
+  }
+#endif
+}
+
+void FlashLed()
+{
+  // Flash LED briefly on reset
+  LED_On();
+  HAL_Delay(500);
+  LED_Off();
+  HAL_Delay(500);
+  LED_On();
+  HAL_Delay(500);
+  LED_Off();
 }
 
 /**
@@ -118,11 +186,24 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief  I2C error callbacks.
+  * @param  I2cHandle: I2C handle
+  * @note   This example shows a simple way to report transfer error, and you can
+  *         add your own implementation.
+  * @retval None
+  */
+void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *theHandle)
+{
+  Error_Handler();
+}
+
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
   */
-static void MX_GPIO_Init(void)
+void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
@@ -132,7 +213,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin : LED_Pin */
   GPIO_InitStruct.Pin = LED_Pin;
@@ -144,6 +225,34 @@ static void MX_GPIO_Init(void)
 }
 
 
+void LED_On()
+{
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET); 
+}
+
+/**
+  * @brief  Turns selected LED Off.
+  * @param  Led: Specifies the Led to be set off. 
+  *   This parameter can be one of following parameters:
+  *     @arg LED2
+  */
+void LED_Off()
+{
+  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET); 
+}
+
+/**
+  * @brief  Toggles the selected LED.
+  * @param  Led: Specifies the Led to be toggled. 
+  *   This parameter can be one of following parameters:
+  *            @arg  LED2
+  */
+void LED_Toggle()
+{
+  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+}
+
+
 /**
   * @brief  This function is executed in case of error occurrence.
   * @retval None
@@ -152,11 +261,12 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
-  /* USER CODE END Error_Handler_Debug */
+  // __disable_irq();
+  while(1)
+  {    
+    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+    HAL_Delay(1000);
+  }   
 }
 
 #ifdef  USE_FULL_ASSERT
