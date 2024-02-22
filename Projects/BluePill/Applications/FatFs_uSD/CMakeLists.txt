@@ -4,6 +4,8 @@ string(REPLACE " " "_" ProjectId ${ProjectId}.elf)
 include_directories(
     ${CMAKE_SOURCE_DIR}/Middlewares/ST/STM32_USB_Device_Library/Core/Inc
     ${CMAKE_SOURCE_DIR}/Middlewares/ST/STM32_USB_Device_Library/Class/CDC/Inc
+    ${CMAKE_SOURCE_DIR}/Middlewares/Third_Party/FatFs/src
+    ${CMAKE_SOURCE_DIR}/Middlewares/Third_Party/FatFs/src/drivers
     Inc
     )
 

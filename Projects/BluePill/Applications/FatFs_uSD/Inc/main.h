@@ -23,8 +23,8 @@
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f1xx_hal.h"
 
-/* EVAL includes component */
-#include "stm3210e_eval.h"
+// /* EVAL includes component */
+// #include "stm3210e_eval.h"
 
 /* FatFs includes component */
 #include "ff_gen_drv.h"
@@ -32,5 +32,34 @@
 
 /* Exported types ------------------------------------------------------------*/
 /* Exported constants --------------------------------------------------------*/
+/* User can use this section to tailor I2Cx/I2Cx instance used and associated
+   resources */
+/* Definition for I2Cx clock resources */
+#define I2Cx                            I2C1
+#define I2Cx_CLK_ENABLE()               __HAL_RCC_I2C1_CLK_ENABLE()
+#define I2Cx_SDA_GPIO_CLK_ENABLE()      __HAL_RCC_GPIOB_CLK_ENABLE()
+#define I2Cx_SCL_GPIO_CLK_ENABLE()      __HAL_RCC_GPIOB_CLK_ENABLE() 
 
+#define I2Cx_FORCE_RESET()              __HAL_RCC_I2C1_FORCE_RESET()
+#define I2Cx_RELEASE_RESET()            __HAL_RCC_I2C1_RELEASE_RESET()
+
+/* Definition for I2Cx Pins */
+#define I2Cx_SCL_PIN                    GPIO_PIN_6
+#define I2Cx_SCL_GPIO_PORT              GPIOB
+#define I2Cx_SDA_PIN                    GPIO_PIN_7
+#define I2Cx_SDA_GPIO_PORT              GPIOB
+
+/* Size of Transmission buffer */
+#define TXBUFFERSIZE                      (COUNTOF(aTxBuffer) - 1)
+/* Size of Reception buffer */
+#define RXBUFFERSIZE                      TXBUFFERSIZE
+
+/* Exported macro ------------------------------------------------------------*/
+#define COUNTOF(__BUFFER__)   (sizeof(__BUFFER__) / sizeof(*(__BUFFER__)))
+/* Exported functions prototypes ---------------------------------------------*/
+void Error_Handler(void);
+#define LED_Pin GPIO_PIN_13
+#define LED_GPIO_Port GPIOC
+
+extern I2C_HandleTypeDef I2cHandle;
 #endif /* __MAIN_H */
