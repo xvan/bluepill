@@ -1,8 +1,10 @@
 /**
   ******************************************************************************
-  * @file    FatFs/FatFs_uSD/Src/stm32f1xx_it.c
+  * @file    I2C/I2C_TwoBoards_ComPolling/Src/stm32f1xx_it.c 
   * @author  MCD Application Team
   * @brief   Main Interrupt Service Routines.
+  *          This file provides template for all exceptions handler and 
+  *          peripherals interrupt service routine.
   ******************************************************************************
   * @attention
   *
@@ -19,6 +21,15 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "stm32f1xx_it.h"
+#include "stm32f1xx_hal.h"
+
+/** @addtogroup STM32F1xx_HAL_Examples
+  * @{
+  */
+
+/** @addtogroup I2C_TwoBoards_ComPolling
+  * @{
+  */
 
 /* Private typedef -----------------------------------------------------------*/
 /* Private define ------------------------------------------------------------*/
@@ -28,7 +39,7 @@
 /* Private functions ---------------------------------------------------------*/
 
 /******************************************************************************/
-/*             Cortex-M3 Processor Exceptions Handlers                         */
+/*            Cortex-M3 Processor Exceptions Handlers                         */
 /******************************************************************************/
 
 /**
@@ -130,7 +141,7 @@ void SysTick_Handler(void)
 }
 
 /******************************************************************************/
-/*                 STM32F1xx Peripherals Interrupt Handlers                        */
+/*                 STM32F1xx Peripherals Interrupt Handlers                  */
 /*  Add here the Interrupt Handler for the used peripheral(s) (PPP), for the  */
 /*  available peripheral interrupt handler's name please refer to the startup */
 /*  file (startup_stm32f1xx.s).                                               */
@@ -144,3 +155,11 @@ void SysTick_Handler(void)
 /*void PPP_IRQHandler(void)
 {
 }*/
+
+/**
+  * @}
+  */
+
+/**
+  * @}
+  */

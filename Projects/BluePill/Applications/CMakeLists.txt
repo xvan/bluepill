@@ -1,1 +1,2 @@
 add_subdirectory(FatFs_uSD)
+add_subdirectory(Signal_Analyzer)

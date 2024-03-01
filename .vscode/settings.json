@@ -1,4 +1,15 @@
 {
     "cmake.sourceDirectory": "${workspaceFolder}",
-    "python.terminal.executeInFileDir": true
+    "python.terminal.executeInFileDir": true,
+    "files.associations": {
+        "stm32f103xb.h": "c",
+        "stm32f1xx_hal_sd.h": "c",
+        "ff_gen_drv.h": "c",
+        "fatfs_sd.h": "c",
+        "stm32f1xx_hal_conf.h": "c",
+        "main.h": "c",
+        "stm32f1xx_it.h": "c",
+        "stm32f1xx_hal.h": "c",
+        "types.h": "c"
+    }
 }

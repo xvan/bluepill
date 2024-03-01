@@ -54,7 +54,7 @@ It is possible to fine tune needed FatFs features by modifying defines values
 in FatFs configuration file “ffconf.h” available under the project includes 
 directory, in a way to fit the application requirements. 
 
-STM3210E-EVAL RevD's LEDs can be used to monitor the example status:
+STM3210C-EVAL RevC's LEDs can be used to monitor the example status:
   - LED_GREEN is on when the example runs successfully.
   - LED_RED is blinking in case of error in initialization or during FatFs_uSD process.
 
@@ -79,9 +79,9 @@ STM3210E-EVAL RevD's LEDs can be used to monitor the example status:
 
 @par Hardware and Software environment
 
-  - This example runs on STM32F103xG devices
+  - This example runs on STM32F107xC devices
     
-  - This example has been tested with STM3210E-EVAL RevD board and can be
+  - This example has been tested with STM3210C-EVAL RevC board and can be
     easily tailored to any other supported device and development board.        
 
 @par How to use it ? 

@@ -1,6 +1,6 @@
 /**
   ******************************************************************************
-  * @file    FatFs/FatFs_uSD/Inc/stm32f1xx_it.h
+  * @file    I2C/I2C_TwoBoards_ComPolling/Inc/stm32f1xx_it.h 
   * @author  MCD Application Team
   * @brief   This file contains the headers of the interrupt handlers.
   ******************************************************************************
@@ -21,8 +21,8 @@
 #define __STM32F1xx_IT_H
 
 #ifdef __cplusplus
-extern "C" {
-#endif
+ extern "C" {
+#endif 
 
 /* Includes ------------------------------------------------------------------*/
 /* Exported types ------------------------------------------------------------*/
@@ -39,8 +39,6 @@ void SVC_Handler(void);
 void DebugMon_Handler(void);
 void PendSV_Handler(void);
 void SysTick_Handler(void);
-void USB_LP_CAN_RX0_IRQHandler(void);
-
 
 #ifdef __cplusplus
 }
