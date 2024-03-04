@@ -23,6 +23,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 #include "usbd_cdc_if.h"
+#include "embedded_cli.h"
 
 /* Private function prototypes -----------------------------------------------*/
 typedef enum {
@@ -44,11 +45,56 @@ static uint32_t InitialAutoreload = 0;
 
 /* TIM2 Clock */
 static uint32_t TimOutClock = 1;
+static struct embedded_cli cli;
 
 /* Private function prototypes -----------------------------------------------*/
 void     Configure_TIMTimeBase(int);
 
 
+/* CLI */
+typedef struct {
+  uint8_t * data;
+  size_t buffer_len;
+  size_t cursor;
+} linear_buffer_object_t;
+
+static void init_linear_buffer(linear_buffer_object_t *buffer_object, uint8_t *data, size_t len){
+  buffer_object->data = data;
+  buffer_object->buffer_len = len;
+  buffer_object->cursor = 0;
+}
+
+static bool linear_buffer_putchar(linear_buffer_object_t * buffer_object, char ch){
+  if (buffer_object->cursor >= buffer_object->buffer_len){
+    return false;
+  }
+  buffer_object->data[buffer_object->cursor++] = ch;
+  return true;
+}
+
+static char getch(void);
+static void buffer_putch(void *, char, bool);
+static void print_buffer(linear_buffer_object_t *);
+
+
+// static void ugly_prompt(void)
+// {
+//     uint8_t rxData[8] = {0};
+//     char * prompt = "hello world";
+//     while (CDC_Transmit_FS(prompt, strlen(prompt)) == USBD_BUSY);
+//     // Echo data
+//     while(1){
+//       uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
+//       if (bytesAvailable > 0) {
+//         uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
+//         if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK) {
+//               while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY);
+//               return;
+//         }
+//       }
+//     }
+// }
+  
 /* Private user code ---------------------------------------------------------*/
 
 /**
@@ -71,27 +117,63 @@ int main(void){
 
   // Read buffer
   uint8_t rxData[8];
-  memset(rxData, 0, 8);https://stackoverflow.com/a/401579/1477064
-
+  memset(rxData, 0, 8);
   
 
-  // // Flash LED briefly on reset
-  // HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
-  // HAL_Delay(500);
-  // HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+  
+  HAL_Delay(500);
 
-  /* Infinite loop */
-  while (1)
-  {    
-    // Echo data
-    uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
-    if (bytesAvailable > 0) {
-    	uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
-    	if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK) {
-            while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY);
-    	}
+
+  
+  
+  linear_buffer_object_t buffer_object;
+  uint8_t buffer[1<<5] = {0};
+  init_linear_buffer(&buffer_object, buffer, sizeof(buffer));
+
+  ShowState(STATE_IDLE);
+  
+  
+
+  embedded_cli_init(&cli, "POSIX> ", buffer_putch, &buffer_object);
+  embedded_cli_prompt(&cli);
+
+
+  bool done = false;
+  while (!done) {
+      char ch = getch();
+
+      /**
+       * If we have entered a command, try and process it
+       */
+      if (embedded_cli_insert_char(&cli, ch)) {
+          int cli_argc;
+          char **cli_argv;
+          cli_argc = embedded_cli_argc(&cli, &cli_argv);
+          // printf("Got %d args\n", cli_argc);
+          // for (int i = 0; i < cli_argc; i++) {
+          //     printf("Arg %d/%d: '%s'\n", i, cli_argc, cli_argv[i]);
+          // }
+          done = cli_argc >= 1 && (strcmp(cli_argv[0], "quit") == 0);
+
+          if (!done)
+              embedded_cli_prompt(&cli);
+      }
     }
-  }
+
+    ShowState(STATE_TRANSMITTING);
+    while(1);
+
+  // while (1)
+  // {    
+  //   // Echo data
+  //   uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
+  //   if (bytesAvailable > 0) {
+  //   	uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
+  //   	if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK) {
+  //           while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY);
+  //   	}
+  //   }
+  // }
 }
 
 void ShowState(STATE state) {
@@ -233,13 +315,9 @@ void  Configure_TIMTimeBase(int frequency)
   */
 void Error_Handler(void)
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
-  /* USER CODE END Error_Handler_Debug */
+  ShowState(STATE_ERROR);
+  while (1);  
+
 }
 
 /**
@@ -254,6 +332,43 @@ void TimerUpdate_Callback(void)
 
 
 /**************************/
+
+
+static char getch(void)
+{
+
+  uint8_t buf;
+  while (CDC_GetRxBufferBytesAvailable_FS() == 0);  
+  if (CDC_ReadRxBuffer_FS(&buf, 1) != USB_CDC_RX_BUFFER_OK){
+    Error_Handler();
+  }
+  return buf;  
+}
+
+
+static void intHandler(int dummy)
+{
+    (void)dummy;
+    embedded_cli_insert_char(&cli, '\x03');
+}
+
+
+static void print_buffer(linear_buffer_object_t * buffer_object){
+  while (CDC_Transmit_FS(buffer_object->data, buffer_object->cursor) == USBD_BUSY);
+  buffer_object->cursor = 0;
+}
+
+static void buffer_putch(void *data, char ch, bool is_last)
+{
+    linear_buffer_object_t * buffer_object = (linear_buffer_object_t *)data;
+    if(! linear_buffer_putchar(buffer_object, ch)){
+      print_buffer(buffer_object);
+      linear_buffer_putchar(buffer_object, ch);
+    }
+    if (is_last){
+      print_buffer(buffer_object);
+    }        
+}
 
 
 #ifdef  USE_FULL_ASSERT
