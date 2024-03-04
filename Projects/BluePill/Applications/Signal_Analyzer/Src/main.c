@@ -25,10 +25,16 @@
 #include "usbd_cdc_if.h"
 
 /* Private function prototypes -----------------------------------------------*/
+typedef enum {
+  STATE_IDLE,
+  STATE_CAPTURING,
+  STATE_TRANSMITTING,
+  STATE_ERROR,
+} STATE;
+
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-
-
+void ShowState(STATE);
 
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
@@ -40,7 +46,7 @@ static uint32_t InitialAutoreload = 0;
 static uint32_t TimOutClock = 1;
 
 /* Private function prototypes -----------------------------------------------*/
-void     Configure_TIMTimeBase(void);
+void     Configure_TIMTimeBase(int);
 
 
 /* Private user code ---------------------------------------------------------*/
@@ -63,11 +69,9 @@ int main(void){
   MX_GPIO_Init();
   MX_USB_DEVICE_Init();
 
-  Configure_TIMTimeBase();
-
   // Read buffer
   uint8_t rxData[8];
-  memset(rxData, 0, 8);
+  memset(rxData, 0, 8);https://stackoverflow.com/a/401579/1477064
 
   
 
@@ -87,7 +91,23 @@ int main(void){
             while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY);
     	}
     }
+  }
+}
 
+void ShowState(STATE state) {
+  switch (state) {
+    case STATE_IDLE:
+      Configure_TIMTimeBase(1);
+      break;
+    case STATE_CAPTURING:
+      LL_TIM_DisableCounter(TIM2);      
+      HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+      break;
+    case STATE_TRANSMITTING:
+      Configure_TIMTimeBase(3);      
+      break;
+    case STATE_ERROR:
+      Configure_TIMTimeBase(10);      
   }
 }
 
@@ -162,7 +182,8 @@ static void MX_GPIO_Init(void)
 
 }
 
-void  Configure_TIMTimeBase(void)
+//frequency in hertz
+void  Configure_TIMTimeBase(int frequency)
 {
   /* Enable the timer peripheral clock */
   LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2); 
@@ -184,11 +205,11 @@ void  Configure_TIMTimeBase(void)
   */
   LL_TIM_SetPrescaler(TIM2, __LL_TIM_CALC_PSC(SystemCoreClock, 10000));
   
-  /* Set the auto-reload value to have an initial update event frequency of 10 Hz */
+  /* Set the auto-reload value to have an initial update event frequency */
     /* TIM2CLK = SystemCoreClock / (APB prescaler & multiplier)                 */
   TimOutClock = SystemCoreClock/2;
   
-  InitialAutoreload = __LL_TIM_CALC_ARR(TimOutClock, LL_TIM_GetPrescaler(TIM2), 10);
+  InitialAutoreload = __LL_TIM_CALC_ARR(TimOutClock, LL_TIM_GetPrescaler(TIM2), frequency);
   LL_TIM_SetAutoReload(TIM2, InitialAutoreload);
   
   /* Enable the update interrupt */
@@ -229,8 +250,11 @@ void Error_Handler(void)
 void TimerUpdate_Callback(void)
 {
   HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
-  
 }
+
+
+/**************************/
+
 
 #ifdef  USE_FULL_ASSERT
 /**
@@ -245,4 +269,5 @@ void assert_failed(uint8_t *file, uint32_t line)
   /* User can add his own implementation to report the file name and line number,
      ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
 }
+
 #endif /* USE_FULL_ASSERT */
