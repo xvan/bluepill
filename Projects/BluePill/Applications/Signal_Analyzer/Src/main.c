@@ -18,12 +18,14 @@
   */
 
 /* Includes ------------------------------------------------------------------*/
+#include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdbool.h>
 #include "main.h"
-#include "usb_device.h"
 
 /* Private includes ----------------------------------------------------------*/
-#include "usbd_cdc_if.h"
-#include "embedded_cli.h"
+#include "cdc_console.h"
 
 /* Private function prototypes -----------------------------------------------*/
 typedef enum {
@@ -33,10 +35,24 @@ typedef enum {
   STATE_ERROR,
 } STATE;
 
+typedef enum {
+  CMD_QUIT,
+  CMD_HELP,
+  CMD_START,
+  CMD_STOP,
+  CMD_UNKNOWN
+} CMD;
+
+
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 void ShowState(STATE);
 
+int command_parser(int argc, char **argv, void (* cli_print)(char * str));
+int parse_capture(int argc, char **argv, void (* cli_print)(char * str));
+int parse_timetest(int argc, char **argv, void (* cli_print)(char * str));
+
+bool parse_integer(char * str, int * value);
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
 /* Initial autoreload value */
@@ -45,55 +61,10 @@ static uint32_t InitialAutoreload = 0;
 
 /* TIM2 Clock */
 static uint32_t TimOutClock = 1;
-static struct embedded_cli cli;
 
 /* Private function prototypes -----------------------------------------------*/
-void     Configure_TIMTimeBase(int);
-
-
-/* CLI */
-typedef struct {
-  uint8_t * data;
-  size_t buffer_len;
-  size_t cursor;
-} linear_buffer_object_t;
-
-static void init_linear_buffer(linear_buffer_object_t *buffer_object, uint8_t *data, size_t len){
-  buffer_object->data = data;
-  buffer_object->buffer_len = len;
-  buffer_object->cursor = 0;
-}
-
-static bool linear_buffer_putchar(linear_buffer_object_t * buffer_object, char ch){
-  if (buffer_object->cursor >= buffer_object->buffer_len){
-    return false;
-  }
-  buffer_object->data[buffer_object->cursor++] = ch;
-  return true;
-}
-
-static char getch(void);
-static void buffer_putch(void *, char, bool);
-static void print_buffer(linear_buffer_object_t *);
-
-
-// static void ugly_prompt(void)
-// {
-//     uint8_t rxData[8] = {0};
-//     char * prompt = "hello world";
-//     while (CDC_Transmit_FS(prompt, strlen(prompt)) == USBD_BUSY);
-//     // Echo data
-//     while(1){
-//       uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
-//       if (bytesAvailable > 0) {
-//         uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
-//         if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK) {
-//               while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY);
-//               return;
-//         }
-//       }
-//     }
-// }
+void     Configure_TIM2TimeBase(int);
+void     Configure_TIM3TimeBase(void);
   
 /* Private user code ---------------------------------------------------------*/
 
@@ -112,84 +83,106 @@ int main(void){
   SystemClock_Config();
 
   /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_USB_DEVICE_Init();
+  MX_GPIO_Init();  
 
-  // Read buffer
-  uint8_t rxData[8];
-  memset(rxData, 0, 8);
-  
-
-  
-  HAL_Delay(500);
-
-
-  
-  
-  linear_buffer_object_t buffer_object;
-  uint8_t buffer[1<<5] = {0};
-  init_linear_buffer(&buffer_object, buffer, sizeof(buffer));
+  cdc_console_init();
 
   ShowState(STATE_IDLE);
   
+  while( cdc_console_parse(command_parser) != CMD_QUIT);
+
+  ShowState(STATE_TRANSMITTING);
+  while(1);
+}
+
+int command_parser(int argc, char **argv, void (* cli_print)(char * str)){
+  if (argc == 0)  return CMD_UNKNOWN;
+
+  if ((strcmp(argv[0], "quit") == 0))
+    return CMD_QUIT;
   
+  if ((strcmp(argv[0], "capture") == 0))
+    return parse_capture(argc, argv, cli_print);  
 
-  embedded_cli_init(&cli, "POSIX> ", buffer_putch, &buffer_object);
-  embedded_cli_prompt(&cli);
+  if ((strcmp(argv[0], "timetest") == 0))
+    return parse_timetest(argc, argv, cli_print);
+  return CMD_UNKNOWN;
+}
 
+int parse_timetest(int argc, char **argv, void (* cli_print)(char * str)){
+  if(argc == 2){        
+    int timeout;
+    if(! parse_integer(argv[1], &timeout)){
+      cli_print("Invalid timeout value\r\n");
+      return CMD_UNKNOWN;
+    }
+    
+    ShowState(STATE_CAPTURING);
 
-  bool done = false;
-  while (!done) {
-      char ch = getch();
+    char str[32];
+    int cnt;
 
-      /**
-       * If we have entered a command, try and process it
-       */
-      if (embedded_cli_insert_char(&cli, ch)) {
-          int cli_argc;
-          char **cli_argv;
-          cli_argc = embedded_cli_argc(&cli, &cli_argv);
-          // printf("Got %d args\n", cli_argc);
-          // for (int i = 0; i < cli_argc; i++) {
-          //     printf("Arg %d/%d: '%s'\n", i, cli_argc, cli_argv[i]);
-          // }
-          done = cli_argc >= 1 && (strcmp(cli_argv[0], "quit") == 0);
+    cli_print("Starting timer test\r\n");
+    Configure_TIM3TimeBase();
+    
+    LL_TIM_SetCounter(TIM3, 0);
 
-          if (!done)
-              embedded_cli_prompt(&cli);
-      }
+    cnt = LL_TIM_GetCounter(TIM3);
+    sprintf(str, "Pre Counter: %d\r\n", cnt);
+    cli_print(str);
+    
+    LL_TIM_EnableCounter(TIM3);
+    HAL_Delay(timeout);
+    LL_TIM_DisableCounter(TIM3);
+    
+    cnt = LL_TIM_GetCounter(TIM3);
+    sprintf(str, "Counter: %d\r\n", cnt);
+    cli_print(str);
+
+    ShowState(STATE_IDLE);
+    return CMD_START;
+  }
+  else{
+    cli_print("Usage: timetest <timeout in milliseconds>\r\n");
+    return CMD_UNKNOWN;
+  }
+  return CMD_UNKNOWN;
+}
+
+int parse_capture(int argc, char **argv, void (* cli_print)(char * str)){
+  if(argc == 2){        
+    int timeout;
+    if(! parse_integer(argv[1], &timeout)){
+      cli_print("Invalid timeout value\r\n");
+      return CMD_UNKNOWN;
     }
 
-    ShowState(STATE_TRANSMITTING);
-    while(1);
-
-  // while (1)
-  // {    
-  //   // Echo data
-  //   uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
-  //   if (bytesAvailable > 0) {
-  //   	uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
-  //   	if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK) {
-  //           while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY);
-  //   	}
-  //   }
-  // }
+    ShowState(STATE_CAPTURING);
+    HAL_Delay(timeout);
+    ShowState(STATE_IDLE);
+    return CMD_START;
+  }
+  else{
+    cli_print("Usage: capture <timeout in milliseconds>\r\n");
+    return CMD_UNKNOWN;
+  }
+  return CMD_UNKNOWN;
 }
 
 void ShowState(STATE state) {
   switch (state) {
     case STATE_IDLE:
-      Configure_TIMTimeBase(1);
+      Configure_TIM2TimeBase(1);
       break;
     case STATE_CAPTURING:
       LL_TIM_DisableCounter(TIM2);      
       HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
       break;
     case STATE_TRANSMITTING:
-      Configure_TIMTimeBase(3);      
+      Configure_TIM2TimeBase(3);      
       break;
     case STATE_ERROR:
-      Configure_TIMTimeBase(10);      
+      Configure_TIM2TimeBase(10);      
   }
 }
 
@@ -265,10 +258,10 @@ static void MX_GPIO_Init(void)
 }
 
 //frequency in hertz
-void  Configure_TIMTimeBase(int frequency)
+void  Configure_TIM2TimeBase(int frequency)
 {
   /* Enable the timer peripheral clock */
-  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2); 
+  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM2);
   
   /* Set counter mode */
   /* Reset value is LL_TIM_COUNTERMODE_UP */
@@ -308,6 +301,59 @@ void  Configure_TIMTimeBase(int frequency)
   LL_TIM_GenerateEvent_UPDATE(TIM2);
 }
 
+void  Configure_TIM3TimeBase()
+{
+  /* Enable the timer peripheral clock */
+  LL_APB1_GRP1_EnableClock(LL_APB1_GRP1_PERIPH_TIM3);
+  
+  /* Set counter mode */
+  /* Reset value is LL_TIM_COUNTERMODE_UP */
+  //LL_TIM_SetCounterMode(TIM2, LL_TIM_COUNTERMODE_UP);
+
+  /* Set the pre-scaler value to have TIM2 counter clock equal to 10 kHz      */
+  /*
+    In this example TIM2 input clock (TIM2CLK)  is set to APB1 clock (PCLK1),
+    since APB1 prescaler is equal to 1.
+      TIM2CLK = PCLK1
+      PCLK1 = HCLK
+      => TIM2CLK = HCLK = SystemCoreClock
+    To get TIM2 counter clock at 10 KHz, the Prescaler is computed as following:
+    Prescaler = (TIM2CLK / TIM2 counter clock) - 1
+    Prescaler = (SystemCoreClock /10 KHz) - 1
+  */
+
+  LL_TIM_SetPrescaler(TIM3, __LL_TIM_CALC_PSC(SystemCoreClock, 1000000));
+  
+  /* Set the auto-reload value to have an initial update event frequency */
+    /* TIM2CLK = SystemCoreClock / (APB prescaler & multiplier)                 */
+  // TimOutClock = SystemCoreClock/2;
+  
+  // InitialAutoreload = __LL_TIM_CALC_ARR(TimOutClock, LL_TIM_GetPrescaler(TIM2), frequency);
+  LL_TIM_SetAutoReload(TIM3, 0xFFFF);
+  LL_TIM_EnableMasterSlaveMode(TIM3);
+
+
+  // LL_TIM_SetPrescaler(TIM3, 0);
+  
+  // /* Set the auto-reload value to have an initial update event frequency */
+  //   /* TIM2CLK = SystemCoreClock / (APB prescaler & multiplier)                 */
+  // TimOutClock = SystemCoreClock/2;
+  
+  // LL_TIM_SetAutoReload(TIM3, 0xFFFF);
+  
+  /* Enable the update interrupt */
+  // LL_TIM_EnableIT_UPDATE(TIM3);
+  
+  /* Configure the NVIC to handle TIM2 update interrupt */
+  // NVIC_SetPriority(TIM3_IRQn, 0);
+  // NVIC_EnableIRQ(TIM3_IRQn);
+  // /* Force update generation */
+  // LL_TIM_GenerateEvent_UPDATE(TIM3);
+  
+  /* Enable counter */
+  //LL_TIM_EnableCounter(TIM3);
+}
+
 
 /**
   * @brief  This function is executed in case of error occurrence.
@@ -331,45 +377,11 @@ void TimerUpdate_Callback(void)
 }
 
 
-/**************************/
-
-
-static char getch(void)
-{
-
-  uint8_t buf;
-  while (CDC_GetRxBufferBytesAvailable_FS() == 0);  
-  if (CDC_ReadRxBuffer_FS(&buf, 1) != USB_CDC_RX_BUFFER_OK){
-    Error_Handler();
-  }
-  return buf;  
+bool parse_integer(char * str, int * value){
+  char * endptr;
+  *value = strtol(str, &endptr, 10);
+  return (*endptr == '\0');
 }
-
-
-static void intHandler(int dummy)
-{
-    (void)dummy;
-    embedded_cli_insert_char(&cli, '\x03');
-}
-
-
-static void print_buffer(linear_buffer_object_t * buffer_object){
-  while (CDC_Transmit_FS(buffer_object->data, buffer_object->cursor) == USBD_BUSY);
-  buffer_object->cursor = 0;
-}
-
-static void buffer_putch(void *data, char ch, bool is_last)
-{
-    linear_buffer_object_t * buffer_object = (linear_buffer_object_t *)data;
-    if(! linear_buffer_putchar(buffer_object, ch)){
-      print_buffer(buffer_object);
-      linear_buffer_putchar(buffer_object, ch);
-    }
-    if (is_last){
-      print_buffer(buffer_object);
-    }        
-}
-
 
 #ifdef  USE_FULL_ASSERT
 /**

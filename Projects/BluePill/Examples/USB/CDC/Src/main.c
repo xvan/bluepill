@@ -28,6 +28,8 @@
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 
+void CONFIGURE_GPIO_PIN();
+
 /* Private user code ---------------------------------------------------------*/
 
 /**

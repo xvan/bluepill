@@ -13,6 +13,23 @@ static volatile DSTATUS Stat = STA_NOINIT;	/* Disk Status */
 static uint8_t CardType;                    /* Type 0:MMC, 1:SDC, 2:Block addressing */
 static uint8_t PowerFlag = 0;				/* Power flag */
 
+
+static inline void
+__spin_delay_m4(uint32_t cycles)
+{
+    // Spin for at least cycles MCU clock cycles.  SUBS + BNE is 3 cycles on
+    // M4, so we round up to the next multiple of 3 cycles.
+    uint32_t iterations = (cycles + 2)/3;
+    asm volatile(
+        ".balign 4;"
+        "1:"
+        "    subs %0, 1;"
+        "    bne 1b;"
+ 
+        :"+r"(iterations)
+        :
+        :"memory", "cc");
+}
 /***************************************
  * SPI functions
  **************************************/
@@ -21,14 +38,14 @@ static uint8_t PowerFlag = 0;				/* Power flag */
 static void SELECT(void)
 {
 	HAL_GPIO_WritePin(SD_CS_PORT, SD_CS_PIN, GPIO_PIN_RESET);
-	HAL_Delay(1);
+	__spin_delay_m4(600);/* approx 10us */
 }
 
 /* slave deselect */
 static void DESELECT(void)
 {
 	HAL_GPIO_WritePin(SD_CS_PORT, SD_CS_PIN, GPIO_PIN_SET);
-	HAL_Delay(1);
+	__spin_delay_m4(600);/* approx 10us */
 }
 
 /* SPI transmit a byte */
@@ -89,15 +106,25 @@ static void SD_PowerOn(void)
 	uint8_t args[6];
 	uint32_t cnt = 0x1FFF;
 
-	/* transmit bytes to wake up */
+	/*Copiado de Arduino*/
+	
+	SELECT();
+
 	DESELECT();
+
+
 	for(int i = 0; i < 10; i++)
 	{
 		SPI_TxByte(0xFF);
 	}
 
-	/* slave select */
 	SELECT();
+	
+
+	for(int i = 0; i < 8; i++)
+	{
+		SPI_TxByte(0xFF);
+	}
 
 	/* make idle state */
 	args[0] = CMD0;		/* CMD0:GO_IDLE_STATE */
@@ -119,6 +146,8 @@ static void SD_PowerOn(void)
 	SPI_TxByte(0XFF);
 
 	PowerFlag = 1;
+
+	while(1);
 }
 
 /* power off */

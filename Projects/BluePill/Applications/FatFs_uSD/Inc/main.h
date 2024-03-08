@@ -62,8 +62,8 @@
 
 #define BUTTON_Pin GPIO_PIN_0
 #define BUTTON_GPIO_Port GPIOA
-#define SD_CS_Pin GPIO_PIN_12
-#define SD_CS_GPIO_Port GPIOB
+// #define SD_CS_Pin GPIO_PIN_12 /* Definded in fastfs_sd.h */
+// #define SD_CS_GPIO_Port GPIOB
 
 /* User can use this section to tailor SPIx instance used and associated
    resources */

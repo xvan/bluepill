@@ -50,6 +50,7 @@
 #include "main.h"
 #include "stm32f1xx_hal.h"
 #include "fatfs.h"
+#include "fatfs_sd.h"
 #include <stdio.h>
 
 /* USER CODE BEGIN Includes */
@@ -73,8 +74,9 @@ char buffer[100];
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_SPI2_Init(void);
+void MX_GPIO_Init(void);
+void CONFIGURE_GPIO_PIN(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, GPIO_PinState PinState);
+void MX_SPI2_Init(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
@@ -90,6 +92,8 @@ static void MX_SPI2_Init(void);
  *
  * @retval None
  */
+
+
 int main(void)
 {
 	/* USER CODE BEGIN 1 */
@@ -116,8 +120,8 @@ int main(void)
 	MX_GPIO_Init();
 	MX_SPI2_Init();
 	MX_FATFS_Init();
-	/* USER CODE BEGIN 2 */
-
+	/* USER CODE BEGIN 2 */	
+	
 	/* Wait for SD module reset */
 	HAL_Delay(500);
 
@@ -226,22 +230,22 @@ void SystemClock_Config(void)
 }
 
 /* SPI2 init function */
-static void MX_SPI2_Init(void)
+void MX_SPI2_Init(void)
 {
-
-	/* SPI2 parameter configuration*/
-	hspi2.Instance = SPI2;
+	hspi2.Instance               = SPI2;
+	hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
+	hspi2.Init.Direction         = SPI_DIRECTION_2LINES;
+	hspi2.Init.CLKPhase          = SPI_PHASE_1EDGE;
+	hspi2.Init.CLKPolarity       = SPI_POLARITY_LOW;
+	hspi2.Init.DataSize          = SPI_DATASIZE_8BIT;
+	hspi2.Init.FirstBit          = SPI_FIRSTBIT_MSB;
+	hspi2.Init.TIMode            = SPI_TIMODE_DISABLE;
+	hspi2.Init.CRCCalculation    = SPI_CRCCALCULATION_DISABLE;
+	hspi2.Init.CRCPolynomial     = 7; /*10??*/
+	hspi2.Init.NSS               = SPI_NSS_SOFT;
 	hspi2.Init.Mode = SPI_MODE_MASTER;
-	hspi2.Init.Direction = SPI_DIRECTION_2LINES;
-	hspi2.Init.DataSize = SPI_DATASIZE_8BIT;
-	hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
-	hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
-	hspi2.Init.NSS = SPI_NSS_SOFT;
-	hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
-	hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
-	hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
-	hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
-	hspi2.Init.CRCPolynomial = 10;
+	
+
 	if (HAL_SPI_Init(&hspi2) != HAL_OK)
 	{
 		_Error_Handler(__FILE__, __LINE__);
@@ -263,23 +267,28 @@ static void MX_SPI2_Init(void)
   */
 void MX_GPIO_Init(void)
 {
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-
-  /* GPIO Ports Clock Enable */
+  /* GPIO Ports Clock Enable */  
+  __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
 
-  /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+  CONFIGURE_GPIO_PIN(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+  CONFIGURE_GPIO_PIN(SD_CS_PORT, SD_CS_PIN, GPIO_PIN_SET);
+}
 
-  /*Configure GPIO pin : LED_Pin */
-  GPIO_InitStruct.Pin = LED_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
+void CONFIGURE_GPIO_PIN(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, GPIO_PinState PinState)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+    /*Configure GPIO pin Output Level */
+    HAL_GPIO_WritePin(GPIOx, GPIO_Pin, PinState);
 
+    /*Configure GPIO pin : LED_Pin */
+    GPIO_InitStruct.Pin = GPIO_Pin;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+    GPIO_InitStruct.Pull = GPIO_PULLUP;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
 }
 
 /* USER CODE BEGIN 4 */

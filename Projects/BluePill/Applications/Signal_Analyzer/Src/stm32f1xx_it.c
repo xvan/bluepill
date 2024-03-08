@@ -231,6 +231,24 @@ void TIM2_IRQHandler(void)
   TimerUpdate_Callback();
 }
 
+/**
+* @brief  This function handles TIM2 update interrupt.
+* @param  None
+* @retval None
+*/
+void TIM3_IRQHandler(void)
+{
+  /* Check whether update interrupt is pending */
+  if(LL_TIM_IsActiveFlag_UPDATE(TIM3) == 1)
+  {
+    /* Clear the update interrupt flag*/
+    LL_TIM_ClearFlag_UPDATE(TIM3);
+  }
+  
+  /* TIM2 update interrupt processing */
+  TimerUpdate_Callback();
+}
+
 /* USER CODE BEGIN 1 */
 
 /* USER CODE END 1 */

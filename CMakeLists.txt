@@ -57,13 +57,16 @@ Drivers/CMSIS/RTOS/Template
 Drivers/STM32F1xx_HAL_Driver/Inc
 #Drivers/STM32F1xx_HAL_Driver/Inc/Legacy
 Middlewares/Third_Party/c-circus
+Middlewares/Third_Party/getopt_port
 )
 
 add_library(CCIRCUS OBJECT 
 "Middlewares/Third_Party/c-circus/circularbuffer_u32.c"
-"Middlewares/Third_Party/c-circus/circularbuffer_u8.c"
 )
 
+add_library(GETOPT OBJECT 
+"Middlewares/Third_Party/getopt_port/getopt.c"
+)
 
 FILE(GLOB_RECURSE CMSIS_DSP_SRC "${CMAKE_SOURCE_DIR}/Drivers/CMSIS/DSP/Source/*/*.c")
 add_library(CMSIS_DSP OBJECT ${CMSIS_DSP_SRC})
