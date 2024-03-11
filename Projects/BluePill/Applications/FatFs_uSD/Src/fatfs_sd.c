@@ -146,8 +146,6 @@ static void SD_PowerOn(void)
 	SPI_TxByte(0XFF);
 
 	PowerFlag = 1;
-
-	while(1);
 }
 
 /* power off */
@@ -250,8 +248,8 @@ static BYTE SD_SendCmd(BYTE cmd, uint32_t arg)
 
 	/* prepare CRC */
 	if(cmd == CMD0) crc = 0x95;	/* CRC for CMD0(0) */
-	else if(cmd == CMD8) crc = 0x87;	/* CRC for CMD8(0x1AA) */
-	else crc = 1;
+	else if(cmd == CMD8) crc = 0x87;	/* CRC for CMD8(0x1AA) */	
+	else crc = 0xff; /* Any Odd Number next to end bit*/
 
 	/* transmit CRC */
 	SPI_TxByte(crc);
