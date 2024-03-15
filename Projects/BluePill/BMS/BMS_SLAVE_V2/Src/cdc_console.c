@@ -17,7 +17,7 @@ char getch(void);
 void buffer_putch(void *, char, bool);
 void print_buffer(linear_buffer_object_t *);
 void cdc_error_handler(void);
-void cli_puts(char* str);
+void cli_puts(const char* str);
 
 /*Globals*/
 struct embedded_cli cli;
@@ -48,7 +48,7 @@ void cdc_console_init(){
   embedded_cli_init(&cli, "POSIX> ", buffer_putch, &global_buffer_object);  
 }
 
-int cdc_console_parse(int (*parse_command)(int argc, char **argv, void (* cli_print)(char * str))){
+int cdc_console_parse(int (*parse_command)(int argc, char **argv, void (* cli_print)(const char * str))){
     bool done = false;
     embedded_cli_prompt(&cli);
 
@@ -102,6 +102,6 @@ void buffer_putch(void *data, char ch, bool is_last)
     }        
 }
 
-void cli_puts(char* str){
+void cli_puts(const char* str){
   while (CDC_Transmit_FS(str, strlen(str)) == USBD_BUSY);
 }

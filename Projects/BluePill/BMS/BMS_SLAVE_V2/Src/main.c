@@ -27,6 +27,7 @@
 /* Private includes ----------------------------------------------------------*/
 #include "usbd_cdc_if.h"
 #include "circularbuffer_u32.h"
+#include "cdc_console.h"
 
 
 #include "../Tests/data/test_data.h"
@@ -54,7 +55,7 @@
 /* Definition of ADCx conversions data table size */
 /* Size of array set to ADC sequencer number of ranks converted,            */
 /* to have a rank in each array address.                                    */
-#define ANALOG_CHANNELS 2
+#define ANALOG_CHANNELS 5
 
 /* Variables for ADC conversion data */
 __IO uint16_t aADCxConvertedData[ANALOG_CHANNELS]; /* ADC group regular conversion data */
@@ -73,7 +74,8 @@ __IO int16_t voltagePA2 = 0; /* Value of temperature calculated from ADC convers
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-void adquisicion(void);
+static inline void adquisicion(void);
+void Step_Equ(void);
 void Configure_TIMTimeBase(void);
 
 void LED_On(void);
@@ -83,6 +85,11 @@ void LED_Blinking(uint32_t Period);
 void Configure_DMA(void);
 void Configure_ADC(void);
 void Activate_ADC(void);
+
+int command_parser(int argc, char **argv, void (* cli_print)(const char * str));
+int handle_command_help(int argc, char **argv, void (* cli_print)(const char * str));
+int handle_command_test_adc(int argc, char **argv, void (* cli_print)(const char * str));
+int handle_command_unkown(void (* cli_print)(const char * str));
 
 #define BUTTON_MODE_GPIO 0
 #define BUTTON_MODE_EXTI 1
@@ -106,6 +113,13 @@ typedef enum state_enum
   STATE_ZONASEGURA,
   STATE_ALARMA
 } state_enum;
+
+typedef enum {
+  CMD_QUIT,
+  CMD_HELP,
+  CMD_UNKNOWN,
+  CMD_OK,
+} CMD;
 
 state_enum estado = STATE_MEDICION;
 
@@ -156,26 +170,113 @@ int main(void)
   /* Logic Data Structures */
   initStructs();
   initialize_calculate();
-  // Read buffer
-  uint8_t rxData[8] = {0};
+  
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_USB_DEVICE_Init();
+  
   Configure_DMA();
   Configure_ADC();
   Activate_ADC();
+
+  cdc_console_init();
+  
 
   // Flash LED briefly on reset
   LED_On();
   HAL_Delay(500);
   LED_Off();
 
+  while(1){
+    cdc_console_parse(command_parser);
+  }
+
   // Configure_TIMTimeBase();
-  main_loop();  
+  // main_loop();  
   //test_loop();
-  //blink_loop();
+  blink_loop();
 }
+
+int command_parser(int argc, char **argv, void (* cli_print)(const char * str)){
+  if (argc == 0) return CMD_UNKNOWN;
+  
+  if ((strcmp(argv[0], "help") == 0))
+    return handle_command_help(argc, argv, cli_print);  
+
+  if ((strcmp(argv[0], "test_adc") == 0))
+    return handle_command_test_adc(argc, argv, cli_print);  
+
+  
+  return handle_command_unkown(cli_print);
+    
+}
+
+int handle_command_unkown(void (* cli_print)(const char * str)){
+  cli_print("Unknown command. Type 'help' for a list of commands.\r\n");
+  return CMD_UNKNOWN;
+}
+
+int handle_command_help(int argc, char **argv, void (* cli_print)(const char * str)){
+  cli_print("Available commands:\r\n");
+  cli_print("help: Display this help message\r\n");
+  cli_print("test_adc: Run ADC test\r\n");
+  return CMD_HELP;
+}
+
+int handle_command_test_adc(int argc, char **argv, void (* cli_print)(const char * str)){
+    
+  char txData = "Let me get this straight, you want to run the ADC test?\r\n";  
+
+  while (CDC_Transmit_FS((uint8_t *)txData, strlen(txData)) == USBD_BUSY);
+
+  cli_print("Starting ADC test\r\n");
+  
+  while(true){
+    cli_print("loop;");
+    
+    /* DATA AQUISITION *****************************************************/
+    if( CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) == 0 )      
+      continue;
+
+    for (int i = 0; i < ANALOG_CHANNELS; i++)
+    {      
+      uint32_t aux_voltage;
+      CircularBuffer_popFront_u32(&analogCircularBufferObjects[i], &aux_voltage);       
+      ChanMedian[i][median_counter] = voltage_to_measurement(aux_voltage, A_Coef[i], B_Coef[i]);
+    }
+    median_counter++;
+
+    /* MEDIAN CALCULATION *******************************************************/
+
+    if (median_counter != MEDIAN_LENGTH) 
+      continue;
+    
+    median_counter = 0;
+    for (int i = 0; i < ANALOG_CHANNELS; i++)
+    {
+      ChanMean[i][mean_counter] = median(ChanMedian[i], MEDIAN_LENGTH);
+    }
+    mean_counter++;
+      
+    if (mean_counter != MEAN_LENGTH)
+      continue;      
+    
+    /* MEAN CALCULATION *********************************************************/
+    mean_counter = 0;
+    float32_t aux_mean[ANALOG_CHANNELS];
+    for (int i = 0; i < ANALOG_CHANNELS; i++)
+    {      
+      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &aux_mean[i]);
+    }      
+
+    char txData[256];
+    sprintf(txData, "CH2: %f\r\nCH3: %f\r\nCH4: %f\r\nCH5: %f\r\nCH6: %f\r\n", aux_mean[0], aux_mean[1], aux_mean[2],aux_mean[3],aux_mean[4]);
+    cli_print(txData);
+  }
+  return CMD_OK;
+}
+
+
 
 void test_loop(){    
     //init_estimacion_original(V1,V1);
@@ -237,7 +338,7 @@ void main_loop(){
     float32_t V2 = aux_mean[1]-aux_mean[0];
     float32_t I = aux_mean[3];
     
-    //estimacion(V1, V2, I);
+    estimacion(V1, V2, I);
   }
 }
 
@@ -387,8 +488,7 @@ void AdcDmaTransferComplete_Callback()
 }
 
 
-
-static void GPIO_Port_Init(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin)
+static void GPIO_Port_Init(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, uint32_t GPIO_Mode, uint32_t GPIO_Pull)
 {  
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
@@ -397,8 +497,8 @@ static void GPIO_Port_Init(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin)
 
   /*Configure GPIO pin : LED_Pin */
   GPIO_InitStruct.Pin = GPIO_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
+  GPIO_InitStruct.Mode = GPIO_Mode;
+  GPIO_InitStruct.Pull = GPIO_Pull;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
 }
@@ -410,22 +510,24 @@ static void GPIO_Port_Init(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin)
  */
 static void MX_GPIO_Init(void)
 {
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
-
   /* GPIO Ports Clock Enable */  
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
 
+
+
+
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
 
-  GPIO_Port_Init(LED_GPIO_Port, LED_Pin);
-  GPIO_Port_Init(EQU_GPIO_PORT, EQU_BALANCE_CHA_PIN);
-  GPIO_Port_Init(EQU_GPIO_PORT, EQU_BALANCE_CHB_PIN);
-  
-  GPIO_Port_Init(ALARM_GPIO_Port, ALARM_PIN);  
+  GPIO_Port_Init(LED_GPIO_Port, LED_Pin, GPIO_MODE_OUTPUT_PP, GPIO_PULLUP);
+  GPIO_Port_Init(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA, GPIO_MODE_OUTPUT_PP, GPIO_PULLUP);
+  GPIO_Port_Init(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB, GPIO_MODE_OUTPUT_PP, GPIO_PULLUP);  
+  GPIO_Port_Init(ALARM_GPIO_Port, ALARM_PIN, GPIO_MODE_OUTPUT_PP, GPIO_PULLUP);
+
+  GPIO_Port_Init(PUSH_BTN_GPIO_PORT, PUSH_BTN_PIN, GPIO_MODE_INPUT, GPIO_PULLUP);
 }
 
 void Configure_DMA(void)
@@ -494,9 +596,11 @@ void Configure_ADC(void)
   LL_APB2_GRP1_EnableClock(LL_APB2_GRP1_PERIPH_GPIOA);
 
   /* Configure GPIO in analog mode to be used as ADC input */
-  LL_GPIO_SetPinMode(EQU_GPIO_PORT, EQU_SENSE_CHA_PIN, LL_GPIO_MODE_ANALOG);
-  LL_GPIO_SetPinMode(EQU_GPIO_PORT, EQU_SENSE_CHB_PIN, LL_GPIO_MODE_ANALOG);
-
+  LL_GPIO_SetPinMode(EQU_GPIO_PORT, EQU_SENSE_PIN_CHA, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(EQU_GPIO_PORT, EQU_SENSE_PIN_CHB, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(TEMP_MEASURE_GPIO_PORT, TEMP_MEASURE_PIN_CHA, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(TEMP_MEASURE_GPIO_PORT, TEMP_MEASURE_PIN_CHB, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(CURRENT_SENSOR_GPIO_PORT, CURRENT_SENSOR_PIN, LL_GPIO_MODE_ANALOG);
 
   /*## Configuration of NVIC #################################################*/
   /* Configure NVIC to enable ADC1 interruptions */
@@ -593,14 +697,17 @@ void Configure_ADC(void)
     /*       "LL_ADC_REG_SetSequencerLength()".                               */
 
     /* Set ADC group regular sequencer length and scan direction */
-    LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_ENABLE_2RANKS);
+    LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_ENABLE_5RANKS);
 
     /* Set ADC group regular sequencer discontinuous mode */
     // LL_ADC_REG_SetSequencerDiscont(ADC1, LL_ADC_REG_SEQ_DISCONT_DISABLE);
 
     /* Set ADC group regular sequence: channel on the selected sequence rank. */
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_0);
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_2);    
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_2);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_3);    
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_4);    
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_4, LL_ADC_CHANNEL_5);    
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_5, LL_ADC_CHANNEL_6);    
   }
 
   /*## Configuration of ADC hierarchical scope: ADC group injected ###########*/
@@ -666,8 +773,11 @@ void Configure_ADC(void)
     /*       temperature sensor) constraints.                                 */
     /*       Refer to description of function                                 */
     /*       "LL_ADC_SetChannelSamplingTime()".                               */
-    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_0, LL_ADC_SAMPLINGTIME_239CYCLES_5);
-    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_2, LL_ADC_SAMPLINGTIME_239CYCLES_5);    
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_2, LL_ADC_SAMPLINGTIME_239CYCLES_5);
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_3, LL_ADC_SAMPLINGTIME_239CYCLES_5);
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_4, LL_ADC_SAMPLINGTIME_239CYCLES_5);
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_5, LL_ADC_SAMPLINGTIME_239CYCLES_5);    
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_6, LL_ADC_SAMPLINGTIME_239CYCLES_5);         
   }
 
   /*## Configuration of ADC transversal scope: analog watchdog ###############*/
@@ -820,13 +930,14 @@ inline float voltage_to_measurement(int voltage,float A, float B)
 }
 
 
-void adquisicion()
+static inline void adquisicion()
 { 
   for (int i = 0; i < ANALOG_CHANNELS; i++)
   {
     int chanVoltage = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[i], LL_ADC_RESOLUTION_12B);
     CircularBuffer_pushBack_u32(&analogCircularBufferObjects[i], chanVoltage);
   }
+  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
 }
 
 
@@ -850,10 +961,10 @@ void initStructs(){
   }
 }
 
-static void Step_Equ()
+void Step_Equ()
 {
-  HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_CHA_PIN, GPIO_PIN_RESET);
-  HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_CHB_PIN, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB, GPIO_PIN_SET);
   // static int state = 0;
 
     
