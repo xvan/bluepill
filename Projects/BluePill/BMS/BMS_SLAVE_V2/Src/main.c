@@ -134,8 +134,8 @@ float ChanMedian[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
 float ChanMean[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
 
 //Coeficinetes de escala para cada canal: V = A*Vv + B
-float A_Coef[ANALOG_CHANNELS] = {1.0, 1.0};
-float B_Coef[ANALOG_CHANNELS] = {0.0, 0.0};
+float A_Coef[ANALOG_CHANNELS] = {1.0, 1.0, 1.0, 1.0, 1.0};
+float B_Coef[ANALOG_CHANNELS] = {0.0, 0.0, 0.0, 0.0, 0.0};
 
 #define CB_LENGTH2N 5
 static CircularBufferObject_t_u32 analogCircularBufferObjects[ANALOG_CHANNELS];
@@ -187,11 +187,13 @@ int main(void)
   HAL_Delay(500);
   LED_Off();
 
+  Configure_TIMTimeBase();
+
   while(1){
     cdc_console_parse(command_parser);
   }
 
-  // Configure_TIMTimeBase();
+  
   // main_loop();  
   //test_loop();
   blink_loop();
@@ -224,15 +226,10 @@ int handle_command_help(int argc, char **argv, void (* cli_print)(const char * s
 }
 
 int handle_command_test_adc(int argc, char **argv, void (* cli_print)(const char * str)){
-    
-  char txData = "Let me get this straight, you want to run the ADC test?\r\n";  
-
-  while (CDC_Transmit_FS((uint8_t *)txData, strlen(txData)) == USBD_BUSY);
-
+      
   cli_print("Starting ADC test\r\n");
   
-  while(true){
-    cli_print("loop;");
+  while(true){    
     
     /* DATA AQUISITION *****************************************************/
     if( CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) == 0 )      
@@ -270,7 +267,7 @@ int handle_command_test_adc(int argc, char **argv, void (* cli_print)(const char
     }      
 
     char txData[256];
-    sprintf(txData, "CH2: %f\r\nCH3: %f\r\nCH4: %f\r\nCH5: %f\r\nCH6: %f\r\n", aux_mean[0], aux_mean[1], aux_mean[2],aux_mean[3],aux_mean[4]);
+    sprintf(txData, "CH2: %f\r\nCH3: %f\r\nCH4: %f\r\nCH5: %f\r\nCH6: %f\r\n****************************\r\n", aux_mean[0], aux_mean[1], aux_mean[2],aux_mean[3],aux_mean[4]);
     cli_print(txData);
   }
   return CMD_OK;
@@ -703,10 +700,10 @@ void Configure_ADC(void)
     // LL_ADC_REG_SetSequencerDiscont(ADC1, LL_ADC_REG_SEQ_DISCONT_DISABLE);
 
     /* Set ADC group regular sequence: channel on the selected sequence rank. */
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_2);
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_3);    
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_4);    
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_4, LL_ADC_CHANNEL_5);    
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_4);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_5);    
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_2);    
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_4, LL_ADC_CHANNEL_3);    
     LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_5, LL_ADC_CHANNEL_6);    
   }
 
