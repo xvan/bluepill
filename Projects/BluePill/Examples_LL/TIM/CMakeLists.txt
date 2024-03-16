@@ -1,1 +1,2 @@
 add_subdirectory(TIM_TimeBase)
+add_subdirectory(ADC_SingleConversion_TriggerTimer_DMA)
