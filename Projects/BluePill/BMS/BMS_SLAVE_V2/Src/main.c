@@ -89,6 +89,8 @@ void Activate_ADC(void);
 int command_parser(int argc, char **argv, void (* cli_print)(const char * str));
 int handle_command_help(int argc, char **argv, void (* cli_print)(const char * str));
 int handle_command_test_adc(int argc, char **argv, void (* cli_print)(const char * str));
+int handle_command_test_equ(int argc, char **argv, void (* cli_print)(const char * str));
+int handle_command_test_calibration(int argc, char **argv, void (* cli_print)(const char * str));
 int handle_command_unkown(void (* cli_print)(const char * str));
 
 #define BUTTON_MODE_GPIO 0
@@ -134,7 +136,7 @@ float ChanMedian[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
 float ChanMean[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
 
 //Coeficinetes de escala para cada canal: V = A*Vv + B
-float A_Coef[ANALOG_CHANNELS] = {1.0, 1.0, 1.0, 1.0, 1.0};
+float A_Coef[ANALOG_CHANNELS] = {1.0, 1.0, 1.15, 2.25, 1.0};
 float B_Coef[ANALOG_CHANNELS] = {0.0, 0.0, 0.0, 0.0, 0.0};
 
 #define CB_LENGTH2N 5
@@ -206,11 +208,106 @@ int command_parser(int argc, char **argv, void (* cli_print)(const char * str)){
     return handle_command_help(argc, argv, cli_print);  
 
   if ((strcmp(argv[0], "test_adc") == 0))
-    return handle_command_test_adc(argc, argv, cli_print);  
+    return handle_command_test_adc(argc, argv, cli_print);
+
+  if ((strcmp(argv[0], "test_equ") == 0))
+    return handle_command_test_equ(argc, argv, cli_print);
+  
+  if ((strcmp(argv[0], "test_calibration") == 0))
+    return handle_command_test_calibration(argc, argv, cli_print);
 
   
   return handle_command_unkown(cli_print);
     
+}
+
+int handle_command_test_calibration(int argc, char **argv, void (* cli_print)(const char * str)){
+  if (argc != 3){
+        cli_print("Usage: test_calibration hi_voltage low_voltage\r\n");
+        return CMD_UNKNOWN;
+  }
+
+  while(true){        
+    /* DATA AQUISITION *****************************************************/
+    if( CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) == 0 )      
+      continue;
+
+    for (int i = 0; i < ANALOG_CHANNELS; i++)
+    {      
+      uint32_t aux_voltage;
+      CircularBuffer_popFront_u32(&analogCircularBufferObjects[i], &aux_voltage);       
+      ChanMedian[i][median_counter] = voltage_to_measurement(aux_voltage, A_Coef[i], B_Coef[i]);
+    }
+    median_counter++;
+
+    /* MEDIAN CALCULATION *******************************************************/
+
+    if (median_counter != MEDIAN_LENGTH) 
+      continue;
+    
+    median_counter = 0;
+    for (int i = 0; i < ANALOG_CHANNELS; i++)
+    {
+      ChanMean[i][mean_counter] = median(ChanMedian[i], MEDIAN_LENGTH);
+    }
+    mean_counter++;
+      
+    if (mean_counter != MEAN_LENGTH)
+      continue;      
+    
+    /* MEAN CALCULATION *********************************************************/
+    mean_counter = 0;
+    float32_t aux_mean[ANALOG_CHANNELS];
+    for (int i = 0; i < ANALOG_CHANNELS; i++)
+    {      
+      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &aux_mean[i]);
+    }      
+
+    char txData[256];
+    sprintf(txData, "%s %s v_low=%f v_hi=%f\r\n", argv[1], argv[2], aux_mean[2],aux_mean[3]-aux_mean[2]);
+    cli_print(txData);
+    
+    return CMD_OK;
+  }
+
+  return CMD_UNKNOWN;
+}
+
+int handle_command_test_equ(int argc, char **argv, void (* cli_print)(const char * str)){
+  if (argc != 2){
+    cli_print("Usage: test_equ [hh|hl|lh|ll]\r\n");
+    return CMD_UNKNOWN;
+  }
+
+  if ((strcmp(argv[1], "hh") == 0)){
+    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB, GPIO_PIN_SET);
+    return CMD_OK;
+  }
+
+  if ((strcmp(argv[1], "hl") == 0))
+  {
+    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB, GPIO_PIN_RESET);
+    return CMD_OK;
+  }
+
+  if ((strcmp(argv[1], "lh") == 0))
+  {
+    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB, GPIO_PIN_SET);
+    return CMD_OK;
+  }
+
+  if ((strcmp(argv[1], "ll") == 0))
+  {
+    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB, GPIO_PIN_RESET);
+    return CMD_OK;
+  }
+
+  cli_print("Usage: test_equ [hh|hl|lh|ll]\r\n");
+  return CMD_UNKNOWN;
 }
 
 int handle_command_unkown(void (* cli_print)(const char * str)){
@@ -222,6 +319,8 @@ int handle_command_help(int argc, char **argv, void (* cli_print)(const char * s
   cli_print("Available commands:\r\n");
   cli_print("help: Display this help message\r\n");
   cli_print("test_adc: Run ADC test\r\n");
+  cli_print("test_equ [hh|hl|lh|ll]: Set the balance pins to the specified state\r\n");
+  cli_print("test_calibration hi_voltage low_voltage: Run calibration test\r\n");
   return CMD_HELP;
 }
 
