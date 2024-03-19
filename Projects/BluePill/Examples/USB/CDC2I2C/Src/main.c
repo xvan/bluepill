@@ -26,7 +26,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* Uncomment this line to use the board as master, if not it is used as slave */
-// #define MASTER_BOARD
+//#define MASTER_BOARD
 #define I2C_ADDRESS        0x30F
 
 /* I2C SPEEDCLOCK define to max value: 400 KHz on STM32F1xx*/
@@ -119,7 +119,7 @@ int main(void){
 
   while (1)
   {
-    if(HAL_I2C_Slave_Transmit(&I2cHandle, (uint8_t*)aTxBuffer, strlen((char*)aTxBuffer), 10000)!= HAL_OK)
+    if(HAL_I2C_Slave_Transmit(&I2cHandle, (uint8_t*)aTxBuffer, strlen(aTxBuffer), 10000)!= HAL_OK)
     { 
       /* Transfer error in transmission process */
       Error_Handler();    
