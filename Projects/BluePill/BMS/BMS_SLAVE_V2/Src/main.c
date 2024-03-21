@@ -165,10 +165,10 @@ float ChanMedian[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
 float ChanMean[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
 
 
-#define CURR_COEFF (4.7 + 10.0) / 10.0 / 65.0
+
 //Coeficinetes de escala para cada canal: V = A*Vv + B
-float A_Coef[ANALOG_CHANNELS] = {1.0, 1.0, 1.15, 2.25, CURR_COEFF};
-float B_Coef[ANALOG_CHANNELS] = {0.0, 0.0, 0.0, 0.0, -38.46};
+float A_Coef[ANALOG_CHANNELS] = {1.0, 1.0, 1.15, 2.25, 0.0194};
+float B_Coef[ANALOG_CHANNELS] = {0.0, 0.0, 0.0, 0.0, -35.3};
 
 #define CB_LENGTH2N 5
 static CircularBufferObject_t_u32 analogCircularBufferObjects[ANALOG_CHANNELS];
