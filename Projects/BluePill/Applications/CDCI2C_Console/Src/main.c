@@ -36,11 +36,8 @@
 #define I2C_DUTYCYCLE    I2C_DUTYCYCLE_2
 
 /* Buffer used for transmission */
-#ifdef MASTER_BOARD
-uint8_t aTxBuffer[TXBUFFERSIZE] = "****Desde Master****\r\n";
-#else
-uint8_t aTxBuffer[TXBUFFERSIZE] = "****Desde Slave****\r\n";
-#endif
+uint8_t aTxBuffer[] = "****El Mismo Mensaje****\r\n";
+
 
 /* Buffer used for reception */
 uint8_t aRxBuffer[RXBUFFERSIZE];
@@ -123,35 +120,18 @@ int main(void){
   MX_GPIO_Init();
   Config_I2C();  
 
-  //cdc_console_init();
+  
   Configure_TIMTimeBase();
 
 
 
   #ifdef MASTER_BOARD   
-  while(1){
-    for(int i = 0; i < RXBUFFERSIZE; i++)
-    aRxBuffer[i] = 0;
-    while(HAL_I2C_Master_Receive(&I2cHandle, (uint16_t)I2C_ADDRESS, (uint8_t *)aRxBuffer, RXBUFFERSIZE, 10000) != HAL_OK)
-      {        
-        if (HAL_I2C_GetError(&I2cHandle) != HAL_I2C_ERROR_AF)
-        {
-          Error_Handler();
-        }
-      }      
-      HAL_Delay(2000);
-  }
+    cdc_console_init();
+    while(1){
+      cdc_console_parse(command_parser);
+    }
   #else
-    //slave_manager();
-
-      while (1)
-      {
-        if(HAL_I2C_Slave_Transmit(&I2cHandle, (uint8_t*)aTxBuffer, strlen(aTxBuffer), 10000)!= HAL_OK)
-        { 
-          /* Transfer error in transmission process */
-          Error_Handler();    
-        }
-      }
+    slave_manager();
   #endif
 }
 
@@ -255,10 +235,11 @@ int led_commands(char * cmd){
 
 int parse_read(int argc, char **argv, void (* cli_print)(char * str)){
   //read i2c from master
+  uint8_t rxbuffer[20] = {0};
   while(1){
-    for(int i = 0; i < RXBUFFERSIZE; i++)
-    aRxBuffer[i] = 0;
-    while(HAL_I2C_Master_Receive(&I2cHandle, (uint16_t)I2C_ADDRESS, (uint8_t *)aRxBuffer, RXBUFFERSIZE, 10000) != HAL_OK)
+    for(int i = 0; i < 20; i++)
+      rxbuffer[i] = 0;
+    while(HAL_I2C_Master_Receive(&I2cHandle, (uint16_t)I2C_ADDRESS, (uint8_t *)rxbuffer, 20, 10000) != HAL_OK)
       {
         /* Error_Handler() function is called when Timeout error occurs.
           When Acknowledge failure occurs (Slave don't acknowledge it's address)
@@ -266,11 +247,27 @@ int parse_read(int argc, char **argv, void (* cli_print)(char * str)){
         if (HAL_I2C_GetError(&I2cHandle) != HAL_I2C_ERROR_AF)
         {
           Error_Handler();
+          continue;
         }
       }
+      
+    float *pf = (float *) rxbuffer;
+    uint32_t *pi = (uint32_t *) rxbuffer;
 
-      cli_print(aRxBuffer);
-      HAL_Delay(2000);
+
+    float V1 = pf[0];
+    float V2 = pf[1];
+    
+    
+    float SOC1 = pf[2];
+    float SOC2 = pf[3];
+
+    int state = pi[4];
+    
+    //format data into string
+    char str[100];
+    sprintf(str, "V1: %.2f, V2: %.2f, SOC1: %.2f, SOC2: %.2f, State: %d\r\n", V1, V2, SOC1, SOC2, state);
+    cli_print(str);
   }
 }
 

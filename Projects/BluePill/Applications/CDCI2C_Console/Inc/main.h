@@ -57,8 +57,7 @@ extern "C" {
 #define I2Cx_SDA_GPIO_PORT              GPIOB
 
 /* Size of Transmission buffer */
-
-#define TXBUFFERSIZE                      120
+#define TXBUFFERSIZE                      (COUNTOF(aTxBuffer) - 1)
 /* Size of Reception buffer */
 #define RXBUFFERSIZE                      TXBUFFERSIZE
 

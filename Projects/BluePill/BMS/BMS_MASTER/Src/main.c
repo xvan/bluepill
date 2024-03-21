@@ -202,7 +202,6 @@ LedBar_StepCounter(){
   HAL_GPIO_WritePin(LED_BAR_GPIO_Port, LED_BAR_Pin3, (counter & 0x08) ? GPIO_PIN_SET : GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LED_BAR_GPIO_Port, LED_BAR_Pin4, (counter & 0x10) ? GPIO_PIN_SET : GPIO_PIN_RESET);
   counter++;
-
 }
 
 static void print_buffer(){

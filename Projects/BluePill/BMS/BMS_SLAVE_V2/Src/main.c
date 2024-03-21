@@ -31,6 +31,24 @@
 
 
 #include "../Tests/data/test_data.h"
+/* I2c stuff -----------------------------------------------------------------*/
+#define I2C_ADDRESS        0x30F
+
+/* I2C SPEEDCLOCK define to max value: 400 KHz on STM32F1xx*/
+#define I2C_SPEEDCLOCK   100000
+#define I2C_DUTYCYCLE    I2C_DUTYCYCLE_2
+
+/* Buffer used for transmission */
+uint8_t aTxBuffer[] = "****El Mismo Mensaje****\r\n";
+
+
+/* Buffer used for reception */
+uint8_t aRxBuffer[RXBUFFERSIZE];
+
+I2C_HandleTypeDef I2cHandle;
+
+
+static void Config_I2C(void);
 
 /* Adc Stuff -----------------------------------------------------------------*/
 #define ADC_CALIBRATION_TIMEOUT_MS ((uint32_t)1)
@@ -123,6 +141,17 @@ typedef enum {
   CMD_OK,
 } CMD;
 
+#define MSG_SIZE 24
+
+typedef struct {
+  float32_t V1;
+  float32_t V2;
+  float32_t I;
+  float32_t SOC1;
+  float32_t SOC2;
+  int32_t STATUS;
+} MSG_SLAVE;
+
 state_enum estado = STATE_MEDICION;
 
 #define MEDIAN_LENGTH 21
@@ -135,9 +164,11 @@ u_int32_t mean_counter = 0;
 float ChanMedian[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
 float ChanMean[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
 
+
+#define CURR_COEFF (4.7 + 10.0) / 10.0 / 65.0
 //Coeficinetes de escala para cada canal: V = A*Vv + B
-float A_Coef[ANALOG_CHANNELS] = {1.0, 1.0, 1.15, 2.25, 1.0};
-float B_Coef[ANALOG_CHANNELS] = {0.0, 0.0, 0.0, 0.0, 0.0};
+float A_Coef[ANALOG_CHANNELS] = {1.0, 1.0, 1.15, 2.25, CURR_COEFF};
+float B_Coef[ANALOG_CHANNELS] = {0.0, 0.0, 0.0, 0.0, -38.46};
 
 #define CB_LENGTH2N 5
 static CircularBufferObject_t_u32 analogCircularBufferObjects[ANALOG_CHANNELS];
@@ -180,8 +211,9 @@ int main(void)
   Configure_DMA();
   Configure_ADC();
   Activate_ADC();
+  Config_I2C();
 
-  cdc_console_init();
+  //cdc_console_init();
   
 
   // Flash LED briefly on reset
@@ -191,15 +223,19 @@ int main(void)
 
   Configure_TIMTimeBase();
 
-  while(1){
-    cdc_console_parse(command_parser);
-  }
-
-  
-  // main_loop();  
+  //main_loop();  
   //test_loop();
-  blink_loop();
+  //blink_loop();
+
+
+  cdc_console_init();
+  while (1)
+  {
+     cdc_console_parse(command_parser);
+  }
 }
+
+
 
 int command_parser(int argc, char **argv, void (* cli_print)(const char * str)){
   if (argc == 0) return CMD_UNKNOWN;
@@ -273,6 +309,18 @@ int handle_command_test_calibration(int argc, char **argv, void (* cli_print)(co
   return CMD_UNKNOWN;
 }
 
+void set_equ(uint8_t state){
+  if(state & 0x01)
+    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA, GPIO_PIN_SET);
+  else
+    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA, GPIO_PIN_RESET);
+
+  if(state & 0x02)
+    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB, GPIO_PIN_SET);
+  else
+    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB, GPIO_PIN_RESET);
+}
+
 int handle_command_test_equ(int argc, char **argv, void (* cli_print)(const char * str)){
   if (argc != 2){
     cli_print("Usage: test_equ [hh|hl|lh|ll]\r\n");
@@ -280,29 +328,25 @@ int handle_command_test_equ(int argc, char **argv, void (* cli_print)(const char
   }
 
   if ((strcmp(argv[1], "hh") == 0)){
-    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB, GPIO_PIN_SET);
+    set_equ(0x03);
     return CMD_OK;
   }
 
   if ((strcmp(argv[1], "hl") == 0))
   {
-    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA, GPIO_PIN_SET);
-    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB, GPIO_PIN_RESET);
+    set_equ(0x02);
     return CMD_OK;
   }
 
   if ((strcmp(argv[1], "lh") == 0))
   {
-    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB, GPIO_PIN_SET);
+    set_equ(0x01);
     return CMD_OK;
   }
 
   if ((strcmp(argv[1], "ll") == 0))
   {
-    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA, GPIO_PIN_RESET);
-    HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB, GPIO_PIN_RESET);
+    set_equ(0x00);
     return CMD_OK;
   }
 
@@ -337,8 +381,12 @@ int handle_command_test_adc(int argc, char **argv, void (* cli_print)(const char
     for (int i = 0; i < ANALOG_CHANNELS; i++)
     {      
       uint32_t aux_voltage;
+      volatile uint32_t zarlanga;
       CircularBuffer_popFront_u32(&analogCircularBufferObjects[i], &aux_voltage);       
       ChanMedian[i][median_counter] = voltage_to_measurement(aux_voltage, A_Coef[i], B_Coef[i]);
+      if(i==4){
+        zarlanga = 5;
+      }
     }
     median_counter++;
 
@@ -385,8 +433,8 @@ void test_loop(){
 }
 
 void main_loop(){
-  while(1){
-    
+  int vuelta = 0;
+  while(1){    
     /* DATA AQUISITION *****************************************************/
     if( CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) == 0 )
       continue;
@@ -422,19 +470,52 @@ void main_loop(){
       arm_mean_f32(ChanMean[i], MEAN_LENGTH, &aux_mean[i]);
     }      
 
-    char txData[256];
-    sprintf(txData, "PA4: %f mV, PA3: %f mV, PA2: %f mV\r\n", aux_mean[0], aux_mean[1], aux_mean[2]);
-    int bytesToWrite = strlen(txData);
-
-    while (CDC_Transmit_FS((uint8_t *)txData, bytesToWrite) == USBD_BUSY);
-
+    /* ACA VA EL CALCULO DE SOC*/
 
     /* CURRENT VALUES */
-    float32_t V1 = aux_mean[0];
-    float32_t V2 = aux_mean[1]-aux_mean[0];
-    float32_t I = aux_mean[3];
     
-    estimacion(V1, V2, I);
+    uint8_t buffer[MSG_SIZE];    
+    MSG_SLAVE * msg = (MSG_SLAVE *) buffer;
+  
+    
+    msg->V1 = aux_mean[2];
+    msg->V2 = aux_mean[3]-aux_mean[2];
+    msg->I = aux_mean[3];
+    
+    //estimacion(V1, V2, I);
+    msg->SOC1 = 1.0;
+    msg->SOC2 = 0.5;
+
+    
+
+    //read state of equ pins
+    uint8_t equ_state = 0;
+    if(HAL_GPIO_ReadPin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA) == GPIO_PIN_SET)
+      equ_state |= 0x01;
+    if(HAL_GPIO_ReadPin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB) == GPIO_PIN_SET)
+      equ_state |= 0x02;
+    
+    //status bit 0 and 1 contains equ_state, the other contain vuelta
+    msg->STATUS = equ_state  | (vuelta << 2);
+
+
+    if(HAL_I2C_Slave_Transmit(&I2cHandle, (uint8_t*)buffer, MSG_SIZE, 10000) != HAL_OK){
+      continue;
+    }
+    
+    uint8_t rxState;
+    if( HAL_I2C_Slave_Receive(&I2cHandle, &rxState, 1, 10000) == HAL_OK)
+    {
+      //HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+      set_equ(rxState & 0x03);
+    }    
+
+    vuelta++;
+
+    // char txData[256];
+    // sprintf(txData, "PA4: %f mV, PA3: %f mV, PA2: %f mV\r\n", aux_mean[0], aux_mean[1], aux_mean[2]);
+    // int bytesToWrite = strlen(txData);
+    // while (CDC_Transmit_FS((uint8_t *)txData, bytesToWrite) == USBD_BUSY);
   }
 }
 
@@ -681,6 +762,25 @@ void Configure_DMA(void)
   LL_DMA_EnableChannel(DMA1,
                        LL_DMA_CHANNEL_1);
 }
+
+ void Config_I2C(void){
+    /*##-1- Configure the I2C peripheral ######################################*/
+    I2cHandle.Instance             = I2Cx;
+    I2cHandle.Init.ClockSpeed      = I2C_SPEEDCLOCK;
+    I2cHandle.Init.DutyCycle       = I2C_DUTYCYCLE;
+    I2cHandle.Init.OwnAddress1     = I2C_ADDRESS;
+    I2cHandle.Init.AddressingMode  = I2C_ADDRESSINGMODE_10BIT;
+    I2cHandle.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+    I2cHandle.Init.OwnAddress2     = 0xFF;
+    I2cHandle.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+    I2cHandle.Init.NoStretchMode   = I2C_NOSTRETCH_DISABLE;  
+    
+    if(HAL_I2C_Init(&I2cHandle) != HAL_OK)
+    {
+      /* Initialization Error */
+      Error_Handler();
+    }
+ }
 
 void Configure_ADC(void)
 {  
@@ -985,7 +1085,7 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
+//  __disable_irq();
   while (1)
   {
   }

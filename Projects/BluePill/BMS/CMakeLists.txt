@@ -1,3 +1,4 @@
 add_subdirectory(BMS_MASTER)
 add_subdirectory(BMS_SLAVE)
 add_subdirectory(BMS_SLAVE_V2)
+add_subdirectory(BMS_MASTER_V2)
