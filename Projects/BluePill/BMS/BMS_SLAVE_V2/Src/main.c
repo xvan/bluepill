@@ -177,6 +177,8 @@ uint32_t analogBuffer[ANALOG_CHANNELS][1 << CB_LENGTH2N] = {0};
 void initStructs(void);
 inline float voltage_to_measurement(int, float, float);
 
+void Get_Next_ADC(float32_t * mean_samples_out);
+
 void main_loop(void);
 void test_loop(void);
 void blink_loop(void);
@@ -189,8 +191,7 @@ void blink_loop(void);
  * @brief  The application entry point.
  * @retval int
  */
-int main(void)
-{
+int main(void){
 
   /* MCU Configuration--------------------------------------------------------*/
 
@@ -262,51 +263,18 @@ int handle_command_test_calibration(int argc, char **argv, void (* cli_print)(co
         cli_print("Usage: test_calibration hi_voltage low_voltage\r\n");
         return CMD_UNKNOWN;
   }
+  
+  float32_t mean_samples[ANALOG_CHANNELS];
+  Get_Next_ADC(mean_samples);      
 
-  while(true){        
-    /* DATA AQUISITION *****************************************************/
-    if( CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) == 0 )      
-      continue;
+  char txData[256];
+  sprintf(txData, "%s %s v_low=%f v_hi=%f\r\n", argv[1], argv[2], mean_samples[2],mean_samples[3]-mean_samples[2]);
+  cli_print(txData);
+  
+  return CMD_OK;
+  
 
-    for (int i = 0; i < ANALOG_CHANNELS; i++)
-    {      
-      uint32_t aux_voltage;
-      CircularBuffer_popFront_u32(&analogCircularBufferObjects[i], &aux_voltage);       
-      ChanMedian[i][median_counter] = voltage_to_measurement(aux_voltage, A_Coef[i], B_Coef[i]);
-    }
-    median_counter++;
-
-    /* MEDIAN CALCULATION *******************************************************/
-
-    if (median_counter != MEDIAN_LENGTH) 
-      continue;
-    
-    median_counter = 0;
-    for (int i = 0; i < ANALOG_CHANNELS; i++)
-    {
-      ChanMean[i][mean_counter] = median(ChanMedian[i], MEDIAN_LENGTH);
-    }
-    mean_counter++;
-      
-    if (mean_counter != MEAN_LENGTH)
-      continue;      
-    
-    /* MEAN CALCULATION *********************************************************/
-    mean_counter = 0;
-    float32_t aux_mean[ANALOG_CHANNELS];
-    for (int i = 0; i < ANALOG_CHANNELS; i++)
-    {      
-      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &aux_mean[i]);
-    }      
-
-    char txData[256];
-    sprintf(txData, "%s %s v_low=%f v_hi=%f\r\n", argv[1], argv[2], aux_mean[2],aux_mean[3]-aux_mean[2]);
-    cli_print(txData);
-    
-    return CMD_OK;
-  }
-
-  return CMD_UNKNOWN;
+  
 }
 
 void set_equ(uint8_t state){
@@ -369,52 +337,16 @@ int handle_command_help(int argc, char **argv, void (* cli_print)(const char * s
 }
 
 int handle_command_test_adc(int argc, char **argv, void (* cli_print)(const char * str)){
-      
+
   cli_print("Starting ADC test\r\n");
   
   while(true){    
     
-    /* DATA AQUISITION *****************************************************/
-    if( CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) == 0 )      
-      continue;
-
-    for (int i = 0; i < ANALOG_CHANNELS; i++)
-    {      
-      uint32_t aux_voltage;
-      volatile uint32_t zarlanga;
-      CircularBuffer_popFront_u32(&analogCircularBufferObjects[i], &aux_voltage);       
-      ChanMedian[i][median_counter] = voltage_to_measurement(aux_voltage, A_Coef[i], B_Coef[i]);
-      if(i==4){
-        zarlanga = 5;
-      }
-    }
-    median_counter++;
-
-    /* MEDIAN CALCULATION *******************************************************/
-
-    if (median_counter != MEDIAN_LENGTH) 
-      continue;
-    
-    median_counter = 0;
-    for (int i = 0; i < ANALOG_CHANNELS; i++)
-    {
-      ChanMean[i][mean_counter] = median(ChanMedian[i], MEDIAN_LENGTH);
-    }
-    mean_counter++;
-      
-    if (mean_counter != MEAN_LENGTH)
-      continue;      
-    
-    /* MEAN CALCULATION *********************************************************/
-    mean_counter = 0;
-    float32_t aux_mean[ANALOG_CHANNELS];
-    for (int i = 0; i < ANALOG_CHANNELS; i++)
-    {      
-      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &aux_mean[i]);
-    }      
+    float32_t mean_samples[ANALOG_CHANNELS];
+    Get_Next_ADC(mean_samples);        
 
     char txData[256];
-    sprintf(txData, "CH2: %f\r\nCH3: %f\r\nCH4: %f\r\nCH5: %f\r\nCH6: %f\r\n****************************\r\n", aux_mean[0], aux_mean[1], aux_mean[2],aux_mean[3],aux_mean[4]);
+    sprintf(txData, "CH2: %f\r\nCH3: %f\r\nCH4: %f\r\nCH5: %f\r\nCH6: %f\r\n****************************\r\n", mean_samples[0], mean_samples[1], mean_samples[2], mean_samples[3], mean_samples[4]);
     cli_print(txData);
   }
   return CMD_OK;
@@ -432,10 +364,8 @@ void test_loop(){
     while(1);
 }
 
-void main_loop(){
-  int vuelta = 0;
-  while(1){    
-    /* DATA AQUISITION *****************************************************/
+void Get_Next_ADC(float32_t * mean_samples_out){
+  while(1){
     if( CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) == 0 )
       continue;
 
@@ -464,11 +394,21 @@ void main_loop(){
     
     /* MEAN CALCULATION *********************************************************/
     mean_counter = 0;
-    float32_t aux_mean[ANALOG_CHANNELS];
+    
     for (int i = 0; i < ANALOG_CHANNELS; i++)
     {      
-      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &aux_mean[i]);
-    }      
+      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &mean_samples_out[i]);
+    }
+    break;
+  }
+}
+
+void main_loop(){
+  int vuelta = 0;
+  while(1){    
+    /* DATA AQUISITION *****************************************************/
+    float32_t mean_samples[ANALOG_CHANNELS];
+    Get_Next_ADC(mean_samples);
 
     /* ACA VA EL CALCULO DE SOC*/
 
@@ -478,9 +418,9 @@ void main_loop(){
     MSG_SLAVE * msg = (MSG_SLAVE *) buffer;
   
     
-    msg->V1 = aux_mean[2];
-    msg->V2 = aux_mean[3]-aux_mean[2];
-    msg->I = aux_mean[3];
+    msg->V1 = mean_samples[2];
+    msg->V2 = mean_samples[3]-mean_samples[2];
+    msg->I = mean_samples[4];
     
     //estimacion(V1, V2, I);
     msg->SOC1 = 1.0;
@@ -518,40 +458,6 @@ void main_loop(){
     // while (CDC_Transmit_FS((uint8_t *)txData, bytesToWrite) == USBD_BUSY);
   }
 }
-
-  // while (1)
-  // {
-  //   ubDmaTransferStatus = 0;
-
-  //   while (ubDmaTransferStatus != 1)
-  //   {
-  //   }
-
-  //   /* Computation of ADC conversions raw data to physical values             */
-  //   /* using LL ADC driver helper macro.                                      */
-  //   voltagePA4 = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[0], LL_ADC_RESOLUTION_12B);
-  //   voltagePA3 = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[1], LL_ADC_RESOLUTION_12B);
-  //   voltagePA2 = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[2], LL_ADC_RESOLUTION_12B);
-
-  //   char txData[256];
-
-  //   sprintf(txData, "PA4: %d mV, PA3: %d mV, PA2: %d mV\r\n", voltagePA4, voltagePA3, voltagePA2);
-  //   int bytesToWrite = strlen(txData);
-
-  //   while (CDC_Transmit_FS((uint8_t *)txData, bytesToWrite) == USBD_BUSY);
-
-  //   // Echo data
-  //   // uint16_t bytesAvailable = CDC_GetRxBufferBytesAvailable_FS();
-  //   // if (bytesAvailable > 0)
-  //   // {
-  //   //   uint16_t bytesToRead = bytesAvailable >= 8 ? 8 : bytesAvailable;
-  //   //   if (CDC_ReadRxBuffer_FS(rxData, bytesToRead) == USB_CDC_RX_BUFFER_OK)
-  //   //   {
-  //   //     while (CDC_Transmit_FS(rxData, bytesToRead) == USBD_BUSY)
-  //   //       ;
-  //   //   }
-  //   // }
-  // }
 
 void LED_On(void)
 {
