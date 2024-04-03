@@ -22,7 +22,6 @@
 #include "usb_device.h"
 #include "arm_math.h"
 #include "math_functions.h"
-#include "estimation.h"
 
 /* Private includes ----------------------------------------------------------*/
 #include "usbd_cdc_if.h"
@@ -181,8 +180,31 @@ void main_loop(void);
 void test_loop(void);
 void blink_loop(void);
 
+void step_one_adc(float32_t * mean_result);
+void step_conteo(float32_t * mean_result);
 /***************************************************/
 
+
+
+#define N_CHANNELS 2
+int adc_voltage_idx[N_CHANNELS] = {2,3};
+
+#define CURRENT_CH 4
+
+float32_t soc[N_CHANNELS] = {0.65,0.65};
+float32_t Q[N_CHANNELS] = {7.5, 7.5};
+float32_t h = 1.0 / 3600.0;
+
+
+void step_conteo(float32_t * mean_result){
+
+  float32_t current = mean_result[CURRENT_CH];
+  if (fabs(current) < 0.06) return;
+
+  for(int i = 0; i < N_CHANNELS; i++){
+    soc[i] += h * current / Q[i];
+  }
+}
 /* Private user code ---------------------------------------------------------*/
 
 /**
@@ -202,7 +224,6 @@ int main(void)
 
   /* Logic Data Structures */
   initStructs();
-  initialize_calculate();
   
 
   /* Initialize all configured peripherals */
@@ -263,41 +284,9 @@ int handle_command_test_calibration(int argc, char **argv, void (* cli_print)(co
         return CMD_UNKNOWN;
   }
 
-  while(true){        
-    /* DATA AQUISITION *****************************************************/
-    if( CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) == 0 )      
-      continue;
-
-    for (int i = 0; i < ANALOG_CHANNELS; i++)
-    {      
-      uint32_t aux_voltage;
-      CircularBuffer_popFront_u32(&analogCircularBufferObjects[i], &aux_voltage);       
-      ChanMedian[i][median_counter] = voltage_to_measurement(aux_voltage, A_Coef[i], B_Coef[i]);
-    }
-    median_counter++;
-
-    /* MEDIAN CALCULATION *******************************************************/
-
-    if (median_counter != MEDIAN_LENGTH) 
-      continue;
-    
-    median_counter = 0;
-    for (int i = 0; i < ANALOG_CHANNELS; i++)
-    {
-      ChanMean[i][mean_counter] = median(ChanMedian[i], MEDIAN_LENGTH);
-    }
-    mean_counter++;
-      
-    if (mean_counter != MEAN_LENGTH)
-      continue;      
-    
-    /* MEAN CALCULATION *********************************************************/
-    mean_counter = 0;
-    float32_t aux_mean[ANALOG_CHANNELS];
-    for (int i = 0; i < ANALOG_CHANNELS; i++)
-    {      
-      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &aux_mean[i]);
-    }      
+  while(true){
+    float32_t aux_mean[ANALOG_CHANNELS];        
+    step_one_adc(aux_mean);      
 
     char txData[256];
     sprintf(txData, "%s %s v_low=%f v_hi=%f\r\n", argv[1], argv[2], aux_mean[2],aux_mean[3]-aux_mean[2]);
@@ -368,12 +357,9 @@ int handle_command_help(int argc, char **argv, void (* cli_print)(const char * s
   return CMD_HELP;
 }
 
-int handle_command_test_adc(int argc, char **argv, void (* cli_print)(const char * str)){
-      
-  cli_print("Starting ADC test\r\n");
-  
+
+void step_one_adc(float32_t * mean_result){
   while(true){    
-    
     /* DATA AQUISITION *****************************************************/
     if( CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) == 0 )      
       continue;
@@ -407,16 +393,49 @@ int handle_command_test_adc(int argc, char **argv, void (* cli_print)(const char
     
     /* MEAN CALCULATION *********************************************************/
     mean_counter = 0;
-    float32_t aux_mean[ANALOG_CHANNELS];
     for (int i = 0; i < ANALOG_CHANNELS; i++)
     {      
-      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &aux_mean[i]);
-    }      
-
-    char txData[256];
-    sprintf(txData, "CH2: %f\r\nCH3: %f\r\nCH4: %f\r\nCH5: %f\r\nCH6: %f\r\n****************************\r\n", aux_mean[0], aux_mean[1], aux_mean[2],aux_mean[3],aux_mean[4]);
-    cli_print(txData);
+      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &mean_result[i]);
+    }
+    break;
   }
+}
+
+
+int handle_command_test_adc(int argc, char **argv, void (* cli_print)(const char * str)){
+      
+  cli_print("Starting ADC test\r\n");
+  
+  float32_t aux_mean[ANALOG_CHANNELS];
+
+  int vuelta = 0;
+  while(1){
+    vuelta ++;
+    step_one_adc(aux_mean);
+    step_conteo(aux_mean);
+
+
+    uint8_t buffer[MSG_SIZE];    
+    MSG_SLAVE * msg = (MSG_SLAVE *) buffer;
+  
+    
+    msg->V1 = aux_mean[adc_voltage_idx[0]];
+    msg->V2 = aux_mean[adc_voltage_idx[1]]-aux_mean[adc_voltage_idx[0]];
+    msg->I = aux_mean[CURRENT_CH];
+    
+    //estimacion(V1, V2, I);
+    msg->SOC1 = soc[0];
+    msg->SOC2 = soc[1];
+        
+    msg->STATUS = vuelta;
+
+    char str[100];
+    
+    sprintf(str, "V1: %.2f, V2: %.2f, I: %.2f, SOC1: %.2f, SOC2: %.2f, Equ_State: %d, Vuelta: %d\r\n", msg->V1, msg->V2, msg->I, msg->SOC1, msg->SOC2, msg->STATUS);
+    cli_print(str);
+  }
+  
+  
   return CMD_OK;
 }
 
@@ -424,10 +443,6 @@ int handle_command_test_adc(int argc, char **argv, void (* cli_print)(const char
 
 void test_loop(){    
     //init_estimacion_original(V1,V1);
-        
-    for(size_t i = 0; i < TEST_DATA_ROWS ; i++) {
-        estimacion(test_data[i][1], test_data[i][1], test_data[i][0]);
-    }
 
     while(1);
 }
@@ -435,40 +450,8 @@ void test_loop(){
 void main_loop(){
   int vuelta = 0;
   while(1){    
-    /* DATA AQUISITION *****************************************************/
-    if( CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) == 0 )
-      continue;
-
-    for (int i = 0; i < ANALOG_CHANNELS; i++)
-    {      
-      uint32_t aux_voltage;
-      CircularBuffer_popFront_u32(&analogCircularBufferObjects[i], &aux_voltage);       
-      ChanMedian[i][median_counter] = voltage_to_measurement(aux_voltage, A_Coef[i], B_Coef[i]);
-    }
-    median_counter++;
-
-    /* MEDIAN CALCULATION *******************************************************/
-
-    if (median_counter != MEDIAN_LENGTH) 
-      continue;
-    
-    median_counter = 0;
-    for (int i = 0; i < ANALOG_CHANNELS; i++)
-    {
-      ChanMean[i][mean_counter] = median(ChanMedian[i], MEDIAN_LENGTH);
-    }
-    mean_counter++;
-      
-    if (mean_counter != MEAN_LENGTH)
-      continue;      
-    
-    /* MEAN CALCULATION *********************************************************/
-    mean_counter = 0;
     float32_t aux_mean[ANALOG_CHANNELS];
-    for (int i = 0; i < ANALOG_CHANNELS; i++)
-    {      
-      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &aux_mean[i]);
-    }      
+    step_one_adc(aux_mean);      
 
     /* ACA VA EL CALCULO DE SOC*/
 
@@ -485,8 +468,6 @@ void main_loop(){
     //estimacion(V1, V2, I);
     msg->SOC1 = 1.0;
     msg->SOC2 = 0.5;
-
-    
 
     //read state of equ pins
     uint8_t equ_state = 0;

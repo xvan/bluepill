@@ -411,6 +411,8 @@ int handle_command_read_slave(int argc, char **argv, void (* cli_print)(const ch
     RTC_TimeShow(timestamp);
     char str[100];
 
+    
+
     //read the inverse of msg->STATUS = equ_state  | (vuelta << 2);
     sprintf(str, "%s V1: %.2f, V2: %.2f, I: %.2f, SOC1: %.2f, SOC2: %.2f, Equ_State: %d, Vuelta: %d\r\n", timestamp, msg->V1, msg->V2, msg->I, msg->SOC1, msg->SOC2, ( msg->STATUS & 0x3), (msg->STATUS >> 2));
 
