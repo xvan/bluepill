@@ -68,10 +68,34 @@ extern "C" {
 void Error_Handler(void);
 void TimerUpdate_Callback(void);
 
-#define LED_Pin GPIO_PIN_13
 #define LED_GPIO_Port GPIOC
-/* USER CODE BEGIN Private defines */
-/* USER CODE END Private defines */
+#define LED_Pin GPIO_PIN_13
+
+#define LED_BLINK_FAST  200
+#define LED_BLINK_SLOW  500
+#define LED_BLINK_ERROR 1000
+
+#define EQU_GPIO_PORT GPIOA
+#define EQU_SENSE_PIN_CHA GPIO_PIN_2
+#define EQU_SENSE_PIN_CHB GPIO_PIN_3
+#define EQU_BALANCE_PIN_CHA_SLAVEA GPIO_PIN_1
+#define EQU_BALANCE_PIN_CHB_SLAVEA GPIO_PIN_0
+
+#define EQU_BALANCE_PIN_CHA_SLAVEB GPIO_PIN_1
+#define EQU_BALANCE_PIN_CHB_SLAVEB GPIO_PIN_3
+
+#define TEMP_MEASURE_GPIO_PORT GPIOA
+#define TEMP_MEASURE_PIN_CHA GPIO_PIN_4
+#define TEMP_MEASURE_PIN_CHB GPIO_PIN_5
+
+#define CURRENT_SENSOR_GPIO_PORT GPIOA
+#define CURRENT_SENSOR_PIN GPIO_PIN_6
+
+#define PUSH_BTN_GPIO_PORT GPIOB
+#define PUSH_BTN_PIN GPIO_PIN_1
+
+#define ALARM_GPIO_Port GPIOC
+#define ALARM_PIN GPIO_PIN_15
 
 #ifdef __cplusplus
 }

@@ -28,8 +28,30 @@
 #include "cdc_console.h"
 
 
-#define MASTER_BOARD
+//#define MASTER_BOARD
+//#define SLAVEA
+#define SLAVEB
+
+#if defined(MASTER_BOARD) + defined(SLAVEA) + defined(SLAVEB) != 1
+#error "Only one of MASTER_BOARD, SLAVEA, or SLAVEB can be defined"
+#endif
+
+
+
+#define I2C_ADDRESS_A        0x311
+#define I2C_ADDRESS_B        0x313
+
+#ifdef SLAVEA
+#define I2C_ADDRESS        I2C_ADDRESS_A
+#endif
+
+#ifdef SLAVEB
+#define I2C_ADDRESS        I2C_ADDRESS_B
+#endif
+
+#ifdef MASTER_BOARD
 #define I2C_ADDRESS        0x30F
+#endif
 
 /* I2C SPEEDCLOCK define to max value: 400 KHz on STM32F1xx*/
 #define I2C_SPEEDCLOCK   100000
@@ -273,7 +295,32 @@ int parse_read(int argc, char **argv, void (* cli_print)(char * str)){
 
 int parse_write(int argc, char **argv, void (* cli_print)(char * str)){   
 
-  while(HAL_I2C_Master_Transmit(&I2cHandle, (uint16_t)I2C_ADDRESS, (uint8_t *)argv[1], strlen(argv[1]), 10000) != HAL_OK)
+  if (argc < 3){
+    cli_print("write [slave 0|1] [value]");
+    return CMD_UNKNOWN;
+  }
+
+  int slave;
+  if (! parse_integer(argv[1], &slave)){
+    cli_print("Invalid slave number");
+    return CMD_UNKNOWN;
+  }
+
+  uint16_t target_address;
+  switch (slave)
+  {
+  case 0:
+    target_address = I2C_ADDRESS_A;
+    break;
+  case 1:
+    target_address = I2C_ADDRESS_B;
+    break;  
+  default:
+    cli_print("Invalid slave number");
+    return CMD_UNKNOWN;
+  }
+
+  while(HAL_I2C_Master_Transmit(&I2cHandle, target_address, (uint8_t *)argv[2], strlen(argv[2]), 10000) != HAL_OK)
   {
     /* Error_Handler() function is called when Timeout error occurs.
       When Acknowledge failure occurs (Slave don't acknowledge it's address)
@@ -385,31 +432,58 @@ void DisableLedBlink(){
 
 
 
-/**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_GPIO_Init(void)
-{
+static void GPIO_Port_Init(GPIO_TypeDef *GPIOx, uint16_t GPIO_Pin, uint32_t GPIO_Mode, uint32_t GPIO_Pull)
+{  
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
-  /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOD_CLK_ENABLE();
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOx, GPIO_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : LED_Pin */
+  GPIO_InitStruct.Pin = GPIO_Pin;
+  GPIO_InitStruct.Mode = GPIO_Mode;
+  GPIO_InitStruct.Pull = GPIO_Pull;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOx, &GPIO_InitStruct);
+}
+
+/**
+ * @brief GPIO Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_GPIO_Init(void)
+{
+  /* GPIO Ports Clock Enable */  
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOD_CLK_ENABLE();
+  __HAL_RCC_GPIOC_CLK_ENABLE();
+
+
+
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+  
+  GPIO_Port_Init(LED_GPIO_Port, LED_Pin, GPIO_MODE_OUTPUT_PP, GPIO_PULLUP);
+  #ifdef SLAVEA
+  HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA_SLAVEA, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB_SLAVEA, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : LED_Pin */
-  GPIO_InitStruct.Pin = LED_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_PULLUP;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(LED_GPIO_Port, &GPIO_InitStruct);
+  GPIO_Port_Init(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA_SLAVEA, GPIO_MODE_OUTPUT_PP, GPIO_PULLUP);
+  GPIO_Port_Init(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB_SLAVEA, GPIO_MODE_OUTPUT_PP, GPIO_PULLUP);  
+  #endif
 
+  #ifdef SLAVEB
+  HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA_SLAVEB, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB_SLAVEB, GPIO_PIN_RESET);
+
+  GPIO_Port_Init(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHA_SLAVEB, GPIO_MODE_OUTPUT_PP, GPIO_PULLUP);
+  GPIO_Port_Init(EQU_GPIO_PORT, EQU_BALANCE_PIN_CHB_SLAVEB, GPIO_MODE_OUTPUT_PP, GPIO_PULLUP);  
+  #endif
 }
+
 
 /**
   * @brief  This function is executed in case of error occurrence.
