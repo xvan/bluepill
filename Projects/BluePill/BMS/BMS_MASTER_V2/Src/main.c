@@ -182,8 +182,10 @@ float ChanMean[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
 #define BAT_COEFF POW_COEFF
 #define CURR_COEFF (4.7 + 10.0) / 10.0 / 65.0
 
-float A_Coef[ANALOG_CHANNELS] = {CURR_COEFF, BAT_COEFF, POW_COEFF};
-float B_Coef[ANALOG_CHANNELS] = {-38.46, 0.0, 0.0};
+// float A_Coef[ANALOG_CHANNELS] = {CURR_COEFF, BAT_COEFF, POW_COEFF};
+// float B_Coef[ANALOG_CHANNELS] = {-38.46, 0.0, 0.0};
+float A_Coef[ANALOG_CHANNELS] = {1,1,1};
+float B_Coef[ANALOG_CHANNELS] = {0,0,0};
 
 #define CB_LENGTH2N 5
 static CircularBufferObject_t_u32 analogCircularBufferObjects[ANALOG_CHANNELS];

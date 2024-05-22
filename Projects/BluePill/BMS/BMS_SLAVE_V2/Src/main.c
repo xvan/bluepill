@@ -411,7 +411,7 @@ void main_loop(){
     Get_Next_ADC(mean_samples);
 
     /* ACA VA EL CALCULO DE SOC*/
-
+    
     /* CURRENT VALUES */
     
     uint8_t buffer[MSG_SIZE];    

@@ -146,9 +146,12 @@ int main(void){
   Configure_TIMTimeBase();
 
 
+  cdc_console_init();
+  while(1){
+      cdc_console_parse(command_parser);
+    }
 
-  #ifdef MASTER_BOARD   
-    cdc_console_init();
+  #ifdef MASTER_BOARD       
     while(1){
       cdc_console_parse(command_parser);
     }
