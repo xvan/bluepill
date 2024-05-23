@@ -45,6 +45,18 @@ void     Configure_GPIO(void);
   * @param  None
   * @retval None
   */
+
+
+void send_command(int command, void *message)
+{
+   asm("mov r0, %[cmd];"
+       "mov r1, %[msg];"
+       "bkpt #0xAB"
+         :
+         : [cmd] "r" (command), [msg] "r" (message)
+         : "r0", "r1", "memory");
+}
+
 int main(void)
 {
   /* Configure the system clock to 72 MHz */
@@ -57,7 +69,10 @@ int main(void)
   while (1)
   {
     LL_GPIO_TogglePin(LED2_GPIO_PORT, LED2_PIN);
-    
+
+    const char s[] = "Hello world\n";
+    uint32_t m[] = { 2/*stderr*/, (uint32_t)s, sizeof(s)/sizeof(char) - 1 };
+    send_command(0x05/* some interrupt ID */, m);  
     /* Insert delay 250 ms */
     LL_mDelay(250);
   }
