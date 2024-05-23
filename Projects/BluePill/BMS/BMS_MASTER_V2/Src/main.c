@@ -198,7 +198,21 @@ void main_loop(void);
 void test_loop(void);
 void blink_loop(void);
 
+void send_command(int command, void *message)
+{
+   asm("mov r0, %[cmd];"
+       "mov r1, %[msg];"
+       "bkpt #0xAB"
+         :
+         : [cmd] "r" (command), [msg] "r" (message)
+         : "r0", "r1", "memory");
+}
 
+
+void semihost_puts(const char * str){
+  uint32_t m[] = { 2/*stderr*/, (uint32_t)str, strlen(str) };
+  send_command(0x05/* some interrupt ID */, m);
+}
 
 /***************************************************/
 
@@ -246,9 +260,14 @@ int main(void)
   Configure_TIMTimeBase();
 
 
-  cdc_console_init();
+  //cdc_console_init();
+  Switch_Off();
+
   while(1){
-    cdc_console_parse(command_parser);
+    averaging_loop(semihost_puts);
+    LED_On();
+    averaging_loop(semihost_puts);
+    LED_Off();
   }
   //main_loop();  
   //blink_loop();
