@@ -145,13 +145,8 @@ int main(void){
   
   Configure_TIMTimeBase();
 
-
-  cdc_console_init();
-  while(1){
-      cdc_console_parse(command_parser);
-    }
-
   #ifdef MASTER_BOARD       
+    cdc_console_init();
     while(1){
       cdc_console_parse(command_parser);
     }
@@ -494,7 +489,7 @@ static void MX_GPIO_Init(void)
   */
 void Error_Handler(void)
 {  
-  EnableLedBlink();
+  //EnableLedBlink();
 }
 
 bool parse_integer(char * str, int * value){
