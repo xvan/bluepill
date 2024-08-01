@@ -108,8 +108,8 @@ void Error_Handler(void);
 #define CLK_OUT_PIN GPIO_PIN_8
 
 #define SWITCH_GPIO_PORT GPIOB
-#define SWITH_DISCHARGE_PIN GPIO_PIN_10
-#define SWITH_CHARGE_PIN GPIO_PIN_11
+#define SWITH_DISCHARGE_PIN GPIO_PIN_11
+#define SWITH_CHARGE_PIN GPIO_PIN_10
 
 #define INTERNAL_TEMPSENSOR_AVGSLOPE   ((int32_t) 4300)        /* Internal temperature sensor, parameter Avg_Slope (unit: uV/DegCelsius). Refer to device datasheet for min/typ/max values. */
 #define INTERNAL_TEMPSENSOR_V25        ((int32_t) 1430)        /* Internal temperature sensor, parameter V25 (unit: mV). Refer to device datasheet for min/typ/max values. */

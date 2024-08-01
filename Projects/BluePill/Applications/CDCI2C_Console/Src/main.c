@@ -250,16 +250,40 @@ int led_commands(char * cmd){
     EnableLedBlink();
     return CMD_UNKNOWN;
   }
-
 }
 
 int parse_read(int argc, char **argv, void (* cli_print)(char * str)){
+    if (argc < 2){
+      cli_print("read [slave 0|1]");
+      return CMD_UNKNOWN;
+    }
+
+    int slave;
+    if (! parse_integer(argv[1], &slave)){
+      cli_print("Invalid slave number");
+      return CMD_UNKNOWN;
+    }
+
+    uint16_t target_address;
+    switch (slave)
+    {
+    case 0:
+      target_address = I2C_ADDRESS_A;
+      break;
+    case 1:
+      target_address = I2C_ADDRESS_B;
+      break;  
+    default:
+      cli_print("Invalid slave number");
+      return CMD_UNKNOWN;
+    }
+
   //read i2c from master
   uint8_t rxbuffer[20] = {0};
   while(1){
     for(int i = 0; i < 20; i++)
       rxbuffer[i] = 0;
-    while(HAL_I2C_Master_Receive(&I2cHandle, (uint16_t)I2C_ADDRESS, (uint8_t *)rxbuffer, 20, 10000) != HAL_OK)
+    while(HAL_I2C_Master_Receive(&I2cHandle, (uint16_t)target_address, (uint8_t *)rxbuffer, 20, 10000) != HAL_OK)
       {
         /* Error_Handler() function is called when Timeout error occurs.
           When Acknowledge failure occurs (Slave don't acknowledge it's address)

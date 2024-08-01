@@ -29,10 +29,16 @@
 #include "circularbuffer_u32.h"
 #include "cdc_console.h"
 
+#include "MST_CURR_calibration.h"
+#include "MST_vbat_calibration.h"
+#include "MST_vpow_calibration.h"
+
 
 #include "../Tests/data/test_data.h"
 /* I2c stuff -----------------------------------------------------------------*/
 #define I2C_ADDRESS        0x30F
+#define I2C_ADDRESS_A      0x311
+#define I2C_ADDRESS_B      0x313
 
 /* I2C SPEEDCLOCK define to max value: 400 KHz on STM32F1xx*/
 #define I2C_SPEEDCLOCK   100000
@@ -74,6 +80,17 @@ static void Config_I2C(void);
 /* Size of array set to ADC sequencer number of ranks converted,            */
 /* to have a rank in each array address.                                    */
 #define ANALOG_CHANNELS 3
+
+/* Identity interpolation*/
+const arm_linear_interp_instance_f32 Identity_Interpolation = {2, 0, 1, (float32_t []){ 0, 1 }};
+
+/* Voltage Interpolation Tables */
+arm_linear_interp_instance_f32 const * Interpolation_Tables[ANALOG_CHANNELS]={
+  &MST_CURR_calibration, 
+  &MST_vbat_calibration,
+  &MST_vpow_calibration  
+  };
+
 
 /* Variables for ADC conversion data */
 __IO uint16_t aADCxConvertedData[ANALOG_CHANNELS]; /* ADC group regular conversion data */
@@ -122,10 +139,13 @@ int handle_command_test_calibration(int argc, char **argv, void (* cli_print)(co
 int handle_command_set_equ(int argc, char **argv, void (* cli_print)(const char * str));
 int handle_command_unkown(void (* cli_print)(const char * str));
 int handle_command_date(int argc, char **argv, void (* cli_print)(const char * str));
+int handle_command_led(int argc, char **argv, void (* cli_print)(const char * str));
+int handle_command_write(int argc, char **argv, void (* cli_print)(const char * str));
 
 void averaging_loop(void (* cli_print)(const char * str));
 
 bool parse_integer(char * str, int * value);
+int led_commands(char * cmd);
 
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
@@ -178,21 +198,14 @@ float ChanMean[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
 
 //Coeficinetes de escala para cada canal: V = A*Vv + B
 
-#define POW_COEFF ((39.0 + 10.0) / 10.0)
-#define BAT_COEFF POW_COEFF
-#define CURR_COEFF (4.7 + 10.0) / 10.0 / 65.0
-
-// float A_Coef[ANALOG_CHANNELS] = {CURR_COEFF, BAT_COEFF, POW_COEFF};
-// float B_Coef[ANALOG_CHANNELS] = {-38.46, 0.0, 0.0};
-float A_Coef[ANALOG_CHANNELS] = {1,1,1};
-float B_Coef[ANALOG_CHANNELS] = {0,0,0};
-
 #define CB_LENGTH2N 5
 static CircularBufferObject_t_u32 analogCircularBufferObjects[ANALOG_CHANNELS];
 uint32_t analogBuffer[ANALOG_CHANNELS][1 << CB_LENGTH2N] = {0};
 
 void initStructs(void);
-inline float voltage_to_measurement(int, float, float);
+inline float voltage_to_measurement(int, arm_linear_interp_instance_f32 const *);
+
+void Get_Next_ADC(float32_t * mean_samples_out);
 
 void main_loop(void);
 void test_loop(void);
@@ -248,9 +261,9 @@ int main(void)
 
   cdc_console_init();
   while(1){
-    cdc_console_parse(command_parser);
+     cdc_console_parse(command_parser);
   }
-  //main_loop();  
+  main_loop();  
   //blink_loop();
 }
 
@@ -303,10 +316,17 @@ int command_parser(int argc, char **argv, void (* cli_print)(const char * str)){
 
   if ((strcmp(argv[0], "date") == 0))
     return handle_command_date(argc, argv, cli_print);
+
+  if ((strcmp(argv[0], "led") == 0))
+    return handle_command_led(argc, argv, cli_print);
+
+  if ((strcmp(argv[0], "write") == 0))
+    return handle_command_write(argc, argv, cli_print);
   
-  return handle_command_unkown(cli_print);
-    
+  return handle_command_unkown(cli_print);    
 }
+
+
 
 int handle_command_date(int argc, char **argv, void (* cli_print)(const char * str)){
   
@@ -333,7 +353,7 @@ int handle_command_date(int argc, char **argv, void (* cli_print)(const char * s
   sdatestructure.WeekDay = RTC_WEEKDAY_MONDAY;
   parse_integer(argv[4], & stimestructure.Hours);
   parse_integer(argv[5], & stimestructure.Minutes);
-  parse_integer(argv[6], & stimestructure.Seconds);
+  parse_integer(argv[6], & stimestructure.Seconds);  
 
   RTC_SetDateTime(&sdatestructure, &stimestructure);
 
@@ -345,6 +365,71 @@ bool parse_integer(char * str, int * value){
   *value = strtol(str, &endptr, 10);
   return (*endptr == '\0');
 }
+
+int handle_command_led(int argc, char **argv, void (* cli_print)(const char * str)){
+    if (argc == 1){
+    cli_print("led [on|off|toggle]");
+    return CMD_UNKNOWN;
+    }
+
+  return led_commands(argv[1]);
+}
+
+int led_commands(char * cmd){
+  if ((strcmp(cmd, "on") == 0)){
+    HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+    return CMD_UNKNOWN;    
+  }
+  if ((strcmp(cmd, "off") == 0)){
+    HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+    return CMD_UNKNOWN;    
+  }
+  if ((strcmp(cmd, "toggle") == 0)){
+    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+    return CMD_UNKNOWN;  
+  }
+}
+
+int handle_command_write(int argc, char **argv, void (* cli_print)(const char * str)){
+    if (argc < 3){
+      cli_print("write [slave 0|1] [value]");
+      return CMD_UNKNOWN;
+    }
+
+    int slave;
+    if (! parse_integer(argv[1], &slave)){
+      cli_print("Invalid slave number");
+      return CMD_UNKNOWN;
+    }
+
+    uint16_t target_address;
+    switch (slave)
+    {
+    case 0:
+      target_address = I2C_ADDRESS_A;
+      break;
+    case 1:
+      target_address = I2C_ADDRESS_B;
+      break;  
+    default:
+      cli_print("Invalid slave number");
+      return CMD_UNKNOWN;
+    }
+
+    while(HAL_I2C_Master_Transmit(&I2cHandle, target_address, (uint8_t *)argv[2], strlen(argv[2]), 10000) != HAL_OK)
+    {
+      /* Error_Handler() function is called when Timeout error occurs.
+        When Acknowledge failure occurs (Slave don't acknowledge it's address)
+        Master restarts communication */          
+      if (HAL_I2C_GetError(&I2cHandle) != HAL_I2C_ERROR_AF)
+      {        
+        cli_print("Error writting to I2C\r\n");
+        return CMD_UNKNOWN;
+      }
+    }
+    return CMD_OK;
+}
+
 
 int handle_command_set_equ(int argc, char **argv, void (* cli_print)(const char * str)){
   if (argc != 3){
@@ -377,6 +462,11 @@ int handle_command_set_equ(int argc, char **argv, void (* cli_print)(const char 
   return CMD_OK;
 }
 
+#define SLAVE_COUNT 2
+int slave_adress[SLAVE_COUNT] = {I2C_ADDRESS_A, I2C_ADDRESS_B};
+
+
+
 int handle_command_read_slave(int argc, char **argv, void (* cli_print)(const char * str)){
   if (argc != 2){
         cli_print("Usage: read_slave <number_of_samples>\r\n");
@@ -395,36 +485,44 @@ int handle_command_read_slave(int argc, char **argv, void (* cli_print)(const ch
   MSG_SLAVE * msg = (MSG_SLAVE *) rxbuffer;
   
   while(samples--){
-    for(int i = 0; i < 20; i++)
-      rxbuffer[i] = 0;
+    for (int slave = 0; slave < SLAVE_COUNT; slave++){    
+      for(int i = 0; i < 20; i++)
+        rxbuffer[i] = 0;
 
-    while(HAL_I2C_Master_Receive(&I2cHandle, (uint16_t)I2C_ADDRESS, (uint8_t *)rxbuffer, MSG_SIZE, 10000) != HAL_OK){
+      while(HAL_I2C_Master_Receive(&I2cHandle, (uint16_t)slave_adress[slave], (uint8_t *)rxbuffer, MSG_SIZE, 10000) != HAL_OK){
+        /* Error_Handler() function is called when Timeout error occurs.
+          When Acknowledge failure occurs (Slave don't acknowledge it's address)
+          Master restarts communication */
+        if (HAL_I2C_GetError(&I2cHandle) != HAL_I2C_ERROR_AF)
+        {
+          return;
+        }
+      }
+
+      
+      //print msg
+      uint8_t timestamp[50];
+      RTC_TimeShow(timestamp);
+      char str[256];
+
+      
+
+      //read the inverse of msg->STATUS = equ_state  | (vuelta << 2);
+      sprintf(str, "%s, SLAVE: %d, V1: %.2f, V2: %.2f, I: %.2f, SOC1: %.2f, SOC2: %.2f, Equ_State: %d, Vuelta: %d\r\n",timestamp,  slave, msg->V1, msg->V2, msg->I, msg->SOC1, msg->SOC2, ( msg->STATUS & 0x3), (msg->STATUS >> 2));
+
+      cli_print(str);
+    }
+
+
+    for (int slave = 0; slave < SLAVE_COUNT; slave++){
+      while(HAL_I2C_Master_Transmit(&I2cHandle, (uint16_t)slave_adress[slave], &equ_state, 1, 10000) != HAL_OK){
       /* Error_Handler() function is called when Timeout error occurs.
         When Acknowledge failure occurs (Slave don't acknowledge it's address)
         Master restarts communication */
-      if (HAL_I2C_GetError(&I2cHandle) != HAL_I2C_ERROR_AF)
-      {
-        return;
-      }
-    }
-
-    //print msg
-    uint8_t timestamp[50];
-    RTC_TimeShow(timestamp);
-    char str[100];
-
-    //read the inverse of msg->STATUS = equ_state  | (vuelta << 2);
-    sprintf(str, "%s V1: %.2f, V2: %.2f, I: %.2f, SOC1: %.2f, SOC2: %.2f, Equ_State: %d, Vuelta: %d\r\n", timestamp, msg->V1, msg->V2, msg->I, msg->SOC1, msg->SOC2, ( msg->STATUS & 0x3), (msg->STATUS >> 2));
-
-    cli_print(str);
-
-    while(HAL_I2C_Master_Transmit(&I2cHandle, (uint16_t)I2C_ADDRESS, &equ_state, 1, 10000) != HAL_OK){
-    /* Error_Handler() function is called when Timeout error occurs.
-      When Acknowledge failure occurs (Slave don't acknowledge it's address)
-      Master restarts communication */
-      if (HAL_I2C_GetError(&I2cHandle) != HAL_I2C_ERROR_AF)
-      {
-        return;
+        if (HAL_I2C_GetError(&I2cHandle) != HAL_I2C_ERROR_AF)
+        {
+          return;
+        }
       }
     }
 }
@@ -438,39 +536,9 @@ int handle_command_test_calibration(int argc, char **argv, void (* cli_print)(co
 
   while(true){        
     /* DATA AQUISITION *****************************************************/
-    if( CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) == 0 )      
-      continue;
-
-    for (int i = 0; i < ANALOG_CHANNELS; i++)
-    {      
-      uint32_t aux_voltage;
-      CircularBuffer_popFront_u32(&analogCircularBufferObjects[i], &aux_voltage);       
-      ChanMedian[i][median_counter] = voltage_to_measurement(aux_voltage, A_Coef[i], B_Coef[i]);
-    }
-    median_counter++;
-
-    /* MEDIAN CALCULATION *******************************************************/
-
-    if (median_counter != MEDIAN_LENGTH) 
-      continue;
-    
-    median_counter = 0;
-    for (int i = 0; i < ANALOG_CHANNELS; i++)
-    {
-      ChanMean[i][mean_counter] = median(ChanMedian[i], MEDIAN_LENGTH);
-    }
-    mean_counter++;
-      
-    if (mean_counter != MEAN_LENGTH)
-      continue;      
-    
-    /* MEAN CALCULATION *********************************************************/
-    mean_counter = 0;
     float32_t aux_mean[ANALOG_CHANNELS];
-    for (int i = 0; i < ANALOG_CHANNELS; i++)
-    {      
-      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &aux_mean[i]);
-    }      
+    Get_Next_ADC(aux_mean);
+
 
     char txData[256];
     sprintf(txData, "%s %s v_low=%f v_hi=%f\r\n", argv[1], argv[2], aux_mean[2],aux_mean[3]-aux_mean[2]);
@@ -519,6 +587,8 @@ int handle_command_help(int argc, char **argv, void (* cli_print)(const char * s
   cli_print("switch [charge|discharge|off]: Switch the charge and discharge relays\r\n");
   cli_print("test_calibration hi_voltage low_voltage: Test the calibration of the voltage sensors\r\n");
   cli_print("read_slave <number_of_samples>: Read the slave device\r\n");  
+  cli_print("led [on|off|toggle]\r\n");
+  cli_print("write <slave> <command>\r\n");  
 
   return CMD_HELP;
 }
@@ -545,11 +615,8 @@ void test_loop(){
     while(1);
 }
 
-
-void averaging_loop(void (* cli_print)(const char * str)){
-  int vuelta = 0;
-  while(1){    
-    /* DATA AQUISITION *****************************************************/
+void Get_Next_ADC(float32_t * mean_samples_out){
+  while(1){
     if( CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) == 0 )
       continue;
 
@@ -557,7 +624,7 @@ void averaging_loop(void (* cli_print)(const char * str)){
     {      
       uint32_t aux_voltage;
       CircularBuffer_popFront_u32(&analogCircularBufferObjects[i], &aux_voltage);       
-      ChanMedian[i][median_counter] = voltage_to_measurement(aux_voltage, A_Coef[i], B_Coef[i]);
+      ChanMedian[i][median_counter] = aux_voltage;
     }
     median_counter++;
 
@@ -578,17 +645,49 @@ void averaging_loop(void (* cli_print)(const char * str)){
     
     /* MEAN CALCULATION *********************************************************/
     mean_counter = 0;
-    float32_t aux_mean[ANALOG_CHANNELS];
+    
     for (int i = 0; i < ANALOG_CHANNELS; i++)
     {      
-      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &aux_mean[i]);
-    }    
-
-    char txData[256];
-    sprintf(txData, "Vbat=%f Vpow=%f I=%f\r\n", aux_mean[1], aux_mean[2], aux_mean[0]);
-    cli_print(txData);
-    break;    
+      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &mean_samples_out[i]);
+    }
+    break;
   }
+}
+
+
+void main_loop(){
+  
+  int vuelta = 0;
+  float32_t el_SOC = 0.5;
+  const float32_t h = 1/3600.0;
+  const float32_t Q = 7.5;
+  
+  while(1){
+    float32_t aux_mean[ANALOG_CHANNELS];
+    Get_Next_ADC(aux_mean);
+
+    float32_t Vbat = aux_mean[1];
+    float32_t Vpow = aux_mean[2];
+    float32_t I = aux_mean[0];    
+
+    el_SOC -= I * h / Q;
+  }
+}
+
+void averaging_loop(void (* cli_print)(const char * str)){
+  int vuelta = 0;
+  float32_t aux_mean[ANALOG_CHANNELS];
+  float32_t aux_interp[ANALOG_CHANNELS];
+  
+  Get_Next_ADC(aux_mean);
+
+  for(int i =0; i < ANALOG_CHANNELS; i++){
+    aux_interp[i]=voltage_to_measurement(aux_mean[i], Interpolation_Tables[i]);
+  }
+
+  char txData[256];  
+  sprintf(txData, "Vbat=%f Vpow=%f I=%f V1=%f V2=%f V3=%f\r\n", aux_mean[1], aux_mean[2], aux_mean[0], aux_interp[1], aux_interp[2], aux_interp[0]);
+  cli_print(txData);  
 }
 
 void LED_On(void)
@@ -1178,9 +1277,9 @@ void assert_failed(uint8_t *file, uint32_t line)
 
 
 
-inline float voltage_to_measurement(int voltage,float A, float B)
+inline float voltage_to_measurement(int voltage, arm_linear_interp_instance_f32 const * pInterpolationTable)
 {
-  return A*voltage + B;
+  return arm_linear_interp_f32(pInterpolationTable, voltage);
 }
 
 

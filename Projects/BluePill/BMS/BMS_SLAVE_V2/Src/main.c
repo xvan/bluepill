@@ -20,9 +20,9 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "usb_device.h"
-#include "arm_math.h"
 #include "math_functions.h"
 #include "estimation.h"
+#include "arm_math.h"
 
 /* Private includes ----------------------------------------------------------*/
 #include "usbd_cdc_if.h"
@@ -32,7 +32,36 @@
 
 #include "../Tests/data/test_data.h"
 /* I2c stuff -----------------------------------------------------------------*/
-#define I2C_ADDRESS        0x30F
+#define SLAVEA
+//#define SLAVEB
+
+#if defined(SLAVEA) + defined(SLAVEB) != 1
+#error "Only one of SLAVEA, or SLAVEB can be defined"
+#endif
+
+#define I2C_ADDRESS_A        0x311
+#define I2C_ADDRESS_B        0x313
+
+#ifdef SLAVEA
+#include "SLVA_CH1_calibration.h"
+#include "SLVA_CH2_calibration.h"
+
+#define CH1_calibration SLVA_CH1_calibration
+#define CH2_calibration SLVA_CH2_calibration
+
+#define I2C_ADDRESS        I2C_ADDRESS_A
+
+#endif
+
+#ifdef SLAVEB
+#include "SLVB_CH1_calibration.h"
+#include "SLVB_CH2_calibration.h"
+
+#define CH1_calibration SLVB_CH1_calibration
+#define CH2_calibration SLVB_CH2_calibration
+
+#define I2C_ADDRESS        I2C_ADDRESS_B
+#endif
 
 /* I2C SPEEDCLOCK define to max value: 400 KHz on STM32F1xx*/
 #define I2C_SPEEDCLOCK   100000
@@ -73,7 +102,18 @@ static void Config_I2C(void);
 /* Definition of ADCx conversions data table size */
 /* Size of array set to ADC sequencer number of ranks converted,            */
 /* to have a rank in each array address.                                    */
-#define ANALOG_CHANNELS 5
+#define ANALOG_CHANNELS 4
+
+/* Identity interpolation*/
+const arm_linear_interp_instance_f32 Identity_Interpolation = {2, 0, 1, (float32_t []){ 0, 1 }};
+
+/* Voltage Interpolation Tables */
+arm_linear_interp_instance_f32 const * Interpolation_Tables[ANALOG_CHANNELS]={
+  &CH1_calibration, 
+  &CH2_calibration,
+  &Identity_Interpolation,
+  &Identity_Interpolation
+  };
 
 /* Variables for ADC conversion data */
 __IO uint16_t aADCxConvertedData[ANALOG_CHANNELS]; /* ADC group regular conversion data */
@@ -110,6 +150,9 @@ int handle_command_test_adc(int argc, char **argv, void (* cli_print)(const char
 int handle_command_test_equ(int argc, char **argv, void (* cli_print)(const char * str));
 int handle_command_test_calibration(int argc, char **argv, void (* cli_print)(const char * str));
 int handle_command_unkown(void (* cli_print)(const char * str));
+
+
+void set_equ(uint8_t state);
 
 #define BUTTON_MODE_GPIO 0
 #define BUTTON_MODE_EXTI 1
@@ -164,24 +207,19 @@ u_int32_t mean_counter = 0;
 float ChanMedian[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
 float ChanMean[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
 
-
-
-//Coeficinetes de escala para cada canal: V = A*Vv + B
-float A_Coef[ANALOG_CHANNELS] = {1.0, 1.0, 1.15, 2.25, 0.0194};
-float B_Coef[ANALOG_CHANNELS] = {0.0, 0.0, 0.0, 0.0, -35.3};
-
 #define CB_LENGTH2N 5
 static CircularBufferObject_t_u32 analogCircularBufferObjects[ANALOG_CHANNELS];
 uint32_t analogBuffer[ANALOG_CHANNELS][1 << CB_LENGTH2N] = {0};
 
 void initStructs(void);
-inline float voltage_to_measurement(int, float, float);
+inline float voltage_to_measurement(int, arm_linear_interp_instance_f32 const *);
 
 void Get_Next_ADC(float32_t * mean_samples_out);
 
 void main_loop(void);
 void test_loop(void);
 void blink_loop(void);
+void slave_manager(void);
 
 /***************************************************/
 
@@ -224,19 +262,52 @@ int main(void){
 
   Configure_TIMTimeBase();
 
-  //main_loop();  
+  
+  main_loop();  
   //test_loop();
   //blink_loop();
+  //slave_manager();
 
 
-  cdc_console_init();
-  while (1)
-  {
-     cdc_console_parse(command_parser);
-  }
+  // cdc_console_init();
+  // while (1)
+  // {
+  //    cdc_console_parse(command_parser);
+  // }
 }
 
+void slave_manager(void){
+  while(true){
+    for(int i = 0; i < RXBUFFERSIZE; i++)
+      aRxBuffer[i] = 0;
 
+    if (HAL_I2C_Slave_Receive(&I2cHandle, (uint8_t *)aRxBuffer, RXBUFFERSIZE, 20000) != HAL_OK)
+    {
+      /* Transfer error in reception process */
+      Error_Handler();
+    }
+    
+    if (strcmp((char *)aRxBuffer, "on") == 0){      
+      HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_RESET);
+    }
+    else if (strcmp((char *)aRxBuffer, "off") == 0){      
+      HAL_GPIO_WritePin(LED_GPIO_Port, LED_Pin, GPIO_PIN_SET);
+    }
+    else if (strcmp((char *)aRxBuffer, "toggle") == 0){      
+      HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+    }    
+    // else if (strcmp((char *)aRxBuffer, "sender_mode") == 0){   
+    //   while (1)
+    //   {
+    //     if(HAL_I2C_Slave_Transmit(&I2cHandle, (uint8_t*)aTxBuffer, strlen(aTxBuffer), 10000)!= HAL_OK)
+    //     { 
+    //       /* Transfer error in transmission process */
+    //       Error_Handler();    
+    //     }
+    //   }
+    // }        
+  }
+}
 
 int command_parser(int argc, char **argv, void (* cli_print)(const char * str)){
   if (argc == 0) return CMD_UNKNOWN;
@@ -272,9 +343,6 @@ int handle_command_test_calibration(int argc, char **argv, void (* cli_print)(co
   cli_print(txData);
   
   return CMD_OK;
-  
-
-  
 }
 
 void set_equ(uint8_t state){
@@ -346,7 +414,7 @@ int handle_command_test_adc(int argc, char **argv, void (* cli_print)(const char
     Get_Next_ADC(mean_samples);        
 
     char txData[256];
-    sprintf(txData, "CH2: %f\r\nCH3: %f\r\nCH4: %f\r\nCH5: %f\r\nCH6: %f\r\n****************************\r\n", mean_samples[0], mean_samples[1], mean_samples[2], mean_samples[3], mean_samples[4]);
+    sprintf(txData, "CHA: %f\r\nCHB: %f\r\nTA: %f\r\nTB: %f\r\n****************************\r\n", mean_samples[0], mean_samples[1], mean_samples[2], mean_samples[3]);
     cli_print(txData);
   }
   return CMD_OK;
@@ -373,7 +441,7 @@ void Get_Next_ADC(float32_t * mean_samples_out){
     {      
       uint32_t aux_voltage;
       CircularBuffer_popFront_u32(&analogCircularBufferObjects[i], &aux_voltage);       
-      ChanMedian[i][median_counter] = voltage_to_measurement(aux_voltage, A_Coef[i], B_Coef[i]);
+      ChanMedian[i][median_counter] = voltage_to_measurement(aux_voltage, Interpolation_Tables[i]);
     }
     median_counter++;
 
@@ -416,15 +484,17 @@ void main_loop(){
     
     uint8_t buffer[MSG_SIZE];    
     MSG_SLAVE * msg = (MSG_SLAVE *) buffer;
+
+    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
   
     
-    msg->V1 = mean_samples[2];
-    msg->V2 = mean_samples[3]-mean_samples[2];
-    msg->I = mean_samples[4];
+    msg->V1 = mean_samples[0];
+    msg->V2 = mean_samples[1];
+    msg->I = 0;
     
     //estimacion(V1, V2, I);
-    msg->SOC1 = 1.0;
-    msg->SOC2 = 0.5;
+    msg->SOC1 = 0;
+    msg->SOC2 = 0;
 
     
 
@@ -701,8 +771,7 @@ void Configure_ADC(void)
   LL_GPIO_SetPinMode(EQU_GPIO_PORT, EQU_SENSE_PIN_CHA, LL_GPIO_MODE_ANALOG);
   LL_GPIO_SetPinMode(EQU_GPIO_PORT, EQU_SENSE_PIN_CHB, LL_GPIO_MODE_ANALOG);
   LL_GPIO_SetPinMode(TEMP_MEASURE_GPIO_PORT, TEMP_MEASURE_PIN_CHA, LL_GPIO_MODE_ANALOG);
-  LL_GPIO_SetPinMode(TEMP_MEASURE_GPIO_PORT, TEMP_MEASURE_PIN_CHB, LL_GPIO_MODE_ANALOG);
-  LL_GPIO_SetPinMode(CURRENT_SENSOR_GPIO_PORT, CURRENT_SENSOR_PIN, LL_GPIO_MODE_ANALOG);
+  LL_GPIO_SetPinMode(TEMP_MEASURE_GPIO_PORT, TEMP_MEASURE_PIN_CHB, LL_GPIO_MODE_ANALOG);  
 
   /*## Configuration of NVIC #################################################*/
   /* Configure NVIC to enable ADC1 interruptions */
@@ -799,17 +868,16 @@ void Configure_ADC(void)
     /*       "LL_ADC_REG_SetSequencerLength()".                               */
 
     /* Set ADC group regular sequencer length and scan direction */
-    LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_ENABLE_5RANKS);
+    LL_ADC_REG_SetSequencerLength(ADC1, LL_ADC_REG_SEQ_SCAN_ENABLE_4RANKS);
 
     /* Set ADC group regular sequencer discontinuous mode */
     // LL_ADC_REG_SetSequencerDiscont(ADC1, LL_ADC_REG_SEQ_DISCONT_DISABLE);
 
     /* Set ADC group regular sequence: channel on the selected sequence rank. */
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_4);
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_5);    
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_2);    
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_4, LL_ADC_CHANNEL_3);    
-    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_5, LL_ADC_CHANNEL_6);    
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_1, LL_ADC_CHANNEL_1);
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_2, LL_ADC_CHANNEL_2);    
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_3, LL_ADC_CHANNEL_4);    
+    LL_ADC_REG_SetSequencerRanks(ADC1, LL_ADC_REG_RANK_4, LL_ADC_CHANNEL_5);
   }
 
   /*## Configuration of ADC hierarchical scope: ADC group injected ###########*/
@@ -875,11 +943,10 @@ void Configure_ADC(void)
     /*       temperature sensor) constraints.                                 */
     /*       Refer to description of function                                 */
     /*       "LL_ADC_SetChannelSamplingTime()".                               */
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_1, LL_ADC_SAMPLINGTIME_239CYCLES_5);
     LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_2, LL_ADC_SAMPLINGTIME_239CYCLES_5);
-    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_3, LL_ADC_SAMPLINGTIME_239CYCLES_5);
     LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_4, LL_ADC_SAMPLINGTIME_239CYCLES_5);
-    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_5, LL_ADC_SAMPLINGTIME_239CYCLES_5);    
-    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_6, LL_ADC_SAMPLINGTIME_239CYCLES_5);         
+    LL_ADC_SetChannelSamplingTime(ADC1, LL_ADC_CHANNEL_5, LL_ADC_SAMPLINGTIME_239CYCLES_5);        
   }
 
   /*## Configuration of ADC transversal scope: analog watchdog ###############*/
@@ -992,9 +1059,7 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
 //  __disable_irq();
-  while (1)
-  {
-  }
+  LL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
   /* USER CODE END Error_Handler_Debug */
 }
 
@@ -1026,9 +1091,9 @@ void assert_failed(uint8_t *file, uint32_t line)
 
 
 
-inline float voltage_to_measurement(int voltage,float A, float B)
+inline float voltage_to_measurement(int voltage, arm_linear_interp_instance_f32 const * pInterpolationTable)
 {
-  return A*voltage + B;
+  return arm_linear_interp_f32(pInterpolationTable, voltage);
 }
 
 
