@@ -1,0 +1,1 @@
+add_subdirectory(BMS_POWER_SLAVE)
