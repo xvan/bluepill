@@ -111,6 +111,27 @@ void Error_Handler(void);
 #define SWITH_DISCHARGE_PIN GPIO_PIN_10
 #define SWITH_CHARGE_PIN GPIO_PIN_11
 
+#define SENSE_GPIO_PORT GPIOA
+
+#define SENSE_CH1 GPIO_PIN_0
+#define SENSE_CH2 GPIO_PIN_1
+#define SENSE_CH3 GPIO_PIN_2
+#define SENSE_CH4 GPIO_PIN_3
+
+#define SENSE_NTC4 GPIO_PIN_4
+#define SENSE_NTC3 GPIO_PIN_5
+#define SENSE_NTC2 GPIO_PIN_6
+#define SENSE_NTC1 GPIO_PIN_7
+
+
+#define EQU_GPIO_PORT GPIOB
+
+#define EQU_CH1 GPIO_PIN_12
+#define EQU_CH2 GPIO_PIN_13
+#define EQU_CH3 GPIO_PIN_14
+#define EQU_CH4 GPIO_PIN_15
+
+
 #define INTERNAL_TEMPSENSOR_AVGSLOPE   ((int32_t) 4300)        /* Internal temperature sensor, parameter Avg_Slope (unit: uV/DegCelsius). Refer to device datasheet for min/typ/max values. */
 #define INTERNAL_TEMPSENSOR_V25        ((int32_t) 1430)        /* Internal temperature sensor, parameter V25 (unit: mV). Refer to device datasheet for min/typ/max values. */
 #define INTERNAL_TEMPSENSOR_V25_TEMP   ((int32_t)   25)
