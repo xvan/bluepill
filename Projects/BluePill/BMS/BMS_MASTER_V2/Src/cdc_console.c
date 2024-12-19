@@ -17,7 +17,6 @@ char getch(void);
 void buffer_putch(void *, char, bool);
 void print_buffer(linear_buffer_object_t *);
 void cdc_error_handler(void);
-void cli_puts(const char* str);
 
 /*Globals*/
 struct embedded_cli cli;

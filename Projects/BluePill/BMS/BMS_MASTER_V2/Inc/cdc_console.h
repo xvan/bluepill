@@ -3,5 +3,6 @@
 
   void cdc_console_init(void);    
   int cdc_console_parse(int (*parse_command)(int argc, char **argv, void (* cli_print)(const char * str)));
+  void cli_puts(const char* str);
 
 #endif // CDC_CONSOLE_H

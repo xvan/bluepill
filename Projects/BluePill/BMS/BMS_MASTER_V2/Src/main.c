@@ -122,8 +122,14 @@ int handle_command_test_calibration(int argc, char **argv, void (* cli_print)(co
 int handle_command_set_equ(int argc, char **argv, void (* cli_print)(const char * str));
 int handle_command_unkown(void (* cli_print)(const char * str));
 int handle_command_date(int argc, char **argv, void (* cli_print)(const char * str));
+int handle_command_collect(int argc, char **argv, void (* cli_print)(const char * str));
+
+
+
 
 void averaging_loop(void (* cli_print)(const char * str));
+bool step_average(float32_t * meas_means);
+void process_adq();
 
 bool parse_integer(char * str, int * value);
 
@@ -178,11 +184,9 @@ float ChanMean[ANALOG_CHANNELS][MEDIAN_LENGTH] = {0};
 
 //Coeficinetes de escala para cada canal: V = A*Vv + B
 
-#define POW_COEFF ((39.0 + 10.0) / 10.0)
-#define BAT_COEFF POW_COEFF
-#define CURR_COEFF (4.7 + 10.0) / 10.0 / 65.0
+#define SENSE_COEFF ((24.0 + 5.6) / 24.0)
 
-float A_Coef[ANALOG_CHANNELS] = {1.0, 1.0, 1.0};
+float A_Coef[ANALOG_CHANNELS] = {SENSE_COEFF, 1.0, 1.0};
 float B_Coef[ANALOG_CHANNELS] = {0.0, 0.0, 0.0};
 
 #define CB_LENGTH2N 5
@@ -245,6 +249,7 @@ int main(void)
 
 
   cdc_console_init();
+  
   while(1){
     cdc_console_parse(command_parser);
   }
@@ -301,6 +306,10 @@ int command_parser(int argc, char **argv, void (* cli_print)(const char * str)){
 
   if ((strcmp(argv[0], "date") == 0))
     return handle_command_date(argc, argv, cli_print);
+  
+  if ((strcmp(argv[0], "collect") == 0))
+    return handle_command_collect(argc, argv, cli_print);
+  
   
   return handle_command_unkown(cli_print);
     
@@ -507,6 +516,29 @@ int handle_command_switch(int argc, char **argv, void (* cli_print)(const char *
   return CMD_UNKNOWN;
 }
 
+
+bool collect_samples;
+
+int handle_command_collect(int argc, char **argv, void (* cli_print)(const char * str)){
+  if (argc != 2){
+        cli_print("Usage: collect [on|off]\r\n");
+        return CMD_UNKNOWN;
+  }
+
+  if ((strcmp(argv[1], "on") == 0)){
+    collect_samples = true;
+    return CMD_OK;
+  }
+
+  if ((strcmp(argv[1], "off") == 0)){
+    collect_samples = false;
+    return CMD_OK;
+  }
+
+  cli_print("Usage: collect [on|off]\r\n");
+  return CMD_UNKNOWN;
+}
+
 int handle_command_unkown(void (* cli_print)(const char * str)){
   cli_print("Unknown command. Type 'help' for a list of commands.\r\n");
   return CMD_UNKNOWN;
@@ -544,14 +576,10 @@ void test_loop(){
 
     while(1);
 }
-
-
-void averaging_loop(void (* cli_print)(const char * str)){
-  int vuelta = 0;
-  while(1){    
-    /* DATA AQUISITION *****************************************************/
+bool step_average(float32_t * means){
+ /* DATA AQUISITION *****************************************************/
     if( CircularBuffer_getUnreadSize_u32(&analogCircularBufferObjects[1]) == 0 )
-      continue;
+      return false;
 
     for (int i = 0; i < ANALOG_CHANNELS; i++)
     {      
@@ -564,7 +592,7 @@ void averaging_loop(void (* cli_print)(const char * str)){
     /* MEDIAN CALCULATION *******************************************************/
 
     if (median_counter != MEDIAN_LENGTH) 
-      continue;
+      return false;
     
     median_counter = 0;
     for (int i = 0; i < ANALOG_CHANNELS; i++)
@@ -574,21 +602,26 @@ void averaging_loop(void (* cli_print)(const char * str)){
     mean_counter++;
       
     if (mean_counter != MEAN_LENGTH)
-      continue;      
+      return false;      
     
     /* MEAN CALCULATION *********************************************************/
     mean_counter = 0;
-    float32_t aux_mean[ANALOG_CHANNELS];
     for (int i = 0; i < ANALOG_CHANNELS; i++)
     {      
-      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &aux_mean[i]);
-    }    
+      arm_mean_f32(ChanMean[i], MEAN_LENGTH, &means[i]);
+    }
+    return true;    
 
-    char txData[256];
-    sprintf(txData, "Vbat=%f Vpow=%f I=%f\r\n", aux_mean[1], aux_mean[2], aux_mean[0]);
-    cli_print(txData);
-    break;    
-  }
+   
+}
+
+void averaging_loop(void (* cli_print)(const char * str)){
+  float32_t aux_mean[ANALOG_CHANNELS];
+  while(! step_average(aux_mean)); 
+
+  char txData[256];
+  sprintf(txData, "V1=%f\r\n", aux_mean[0]);
+  cli_print(txData);
 }
 
 void LED_On(void)
@@ -1188,6 +1221,34 @@ inline float voltage_to_measurement(int voltage,float A, float B)
   return A*voltage + B;
 }
 
+typedef struct mysample{
+  RTC_TimeTypeDef timestamp;
+  float32_t valor;
+} mysample;
+
+#define TEST_MEAS_LEN 60
+mysample test_meas[TEST_MEAS_LEN];
+size_t test_idx = 0;
+
+void process_adq(){
+  float32_t aux_mean[ANALOG_CHANNELS];
+  char txData[256];
+
+  if ( step_average(aux_mean)){
+      int idx = test_idx++;
+      HAL_RTC_GetTime(&RtcHandle, &test_meas[idx].timestamp, RTC_FORMAT_BIN);
+      test_meas[idx].valor = aux_mean[0];
+      
+  }
+  if (test_idx >= TEST_MEAS_LEN ){
+    for(int i = 0; i< TEST_MEAS_LEN ; i++){    
+      sprintf(txData, "%02d:%02d:%02d, %f\r\n", test_meas[i].timestamp.Hours, test_meas[i].timestamp.Minutes, test_meas[i].timestamp.Seconds, test_meas[i].valor);
+      cli_puts(txData);
+    }
+    
+    test_idx = 0;
+  }
+}
 
 static inline void adquisicion()
 { 
@@ -1196,7 +1257,8 @@ static inline void adquisicion()
     int chanVoltage = __LL_ADC_CALC_DATA_TO_VOLTAGE(VDDA_APPLI, aADCxConvertedData[i], LL_ADC_RESOLUTION_12B);
     CircularBuffer_pushBack_u32(&analogCircularBufferObjects[i], chanVoltage);
   }
-  HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+  //HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+  if (collect_samples) process_adq();
 }
 
 void initStructs(){
